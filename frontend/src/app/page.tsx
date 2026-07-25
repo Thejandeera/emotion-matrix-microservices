@@ -1,65 +1,200 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import { useState, useRef, ChangeEvent } from "react";
+import "./model.css";
+
+interface DetectedIssue {
+  phrase: string;
+  isolated_sentence: string;
+  emotion: string;
+  sentiment_category: string;
+  confidence: number;
+}
+
+export default function EmotionMatrixPage() {
+  const [base64String, setBase64String] = useState<string>("");
+  const [transcript, setTranscript] = useState<string>("");
+  const [processingTime, setProcessingTime] = useState<number | null>(null);
+  const [issues, setIssues] = useState<DetectedIssue[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  const [isRecording, setIsRecording] = useState<boolean>(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+
+  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = e.target.files?.[0];
+    if (!selectedFile) return;
+    resetState();
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const result = event.target?.result as string;
+      const b64 = result.split(",")[1];
+      setBase64String(b64);
+    };
+    reader.readAsDataURL(selectedFile);
+  };
+
+  const startRecording = async () => {
+    try {
+      resetState();
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+      audioChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const result = reader.result as string;
+          const b64 = result.split(",")[1];
+          setBase64String(b64);
+        };
+        reader.readAsDataURL(audioBlob);
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+    } catch (err) {
+      setError("Microphone access denied or unavailable.");
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && isRecording) {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+    }
+  };
+
+  const handleSend = async () => {
+    if (!base64String) {
+      setError("Please select a file or record audio first.");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      const response = await fetch("http://localhost:8000/api/v1/process-audio", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ audio_data: base64String }),
+      });
+
+      const data = await response.json();
+
+      if (data.status === "success") {
+        setTranscript(data.transcript);
+        setProcessingTime(data.processing_time_ms / 1000);
+        setIssues(data.detected_issues || []);
+      } else {
+        setError(data.detail || "An error occurred during processing.");
+      }
+    } catch (err) {
+      setError("Failed to connect to the API Gateway.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const resetState = () => {
+    setBase64String("");
+    setTranscript("");
+    setProcessingTime(null);
+    setIssues([]);
+    setError(null);
+  };
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
+    <main className="rest-page">
+      <div className="rest-container">
+        <h1 className="rest-title">Emotion Matrix: Microservices UI</h1>
+
+        <section className="rest-section">
+          <h2 className="rest-section-title">1. Input Audio</h2>
+          <div className="rest-input-group">
+            <input type="file" accept="audio/*" onChange={handleFileChange} className="rest-file-input" />
+            <span style={{ fontWeight: 600 }}>OR</span>
+            <button 
+              onClick={isRecording ? stopRecording : startRecording} 
+              className="rest-button"
+              style={isRecording ? { backgroundColor: "#ef4444", borderColor: "#ef4444" } : {}}
             >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
-        </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
+              {isRecording ? "Stop Recording" : "Start Mic"}
+            </button>
+          </div>
+          
+          <button onClick={handleSend} disabled={isLoading || !base64String} className="rest-button">
+            {isLoading ? "Processing through Gateway..." : "Analyze Audio"}
+          </button>
+          {error && <p className="rest-error">{error}</p>}
+        </section>
+
+        <section className="rest-section">
+          <h2 className="rest-section-title">2. Analysis Results</h2>
+          
+          <div className="rest-results-grid">
+            <div className="rest-box">
+              <h3>Pipeline Speed</h3>
+              <p className="rest-stat">
+                {processingTime !== null ? `${processingTime} seconds` : "--"}
+              </p>
+            </div>
+            
+            <div className="rest-box rest-transcript-box">
+              <h3>Raw Transcript</h3>
+              <p className="rest-transcript-text">
+                {transcript || "Waiting for audio..."}
+              </p>
+            </div>
+          </div>
+
+          <h3 style={{ marginTop: "1rem", fontSize: "1.25rem", fontWeight: 700, textTransform: "uppercase", borderBottom: "1px solid #000", paddingBottom: "0.5rem" }}>
+            Detected Keyphrases & Emotions
+          </h3>
+          
+          {issues.length > 0 ? (
+            <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+              {issues.map((issue, idx) => (
+                <div key={idx} className="rest-box">
+                  <p style={{ margin: "0 0 0.5rem 0" }}><strong>Phrase Match:</strong> "{issue.phrase}"</p>
+                  <p style={{ margin: "0 0 1.25rem 0" }}><strong>Isolated Context:</strong> <i>"{issue.isolated_sentence}"</i></p>
+                  
+                  <div className="rest-sentiment-container">
+                    <div className="rest-badge-group">
+                      <span className={`rest-badge rest-badge-${issue.sentiment_category.toLowerCase()}`}>
+                        {issue.sentiment_category}
+                      </span>
+                      <span className="rest-emotion-pill">
+                        {issue.emotion}
+                      </span>
+                    </div>
+                    <p className="rest-confidence">
+                      Confidence: {(issue.confidence * 100).toFixed(1)}%
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="rest-placeholder">
+              {transcript ? "No critical support phrases detected." : "--"}
+            </p>
+          )}
+        </section>
+      </div>
+    </main>
   );
 }
