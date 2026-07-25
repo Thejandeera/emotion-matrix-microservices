@@ -46,8 +46,14 @@ async def process_audio(payload: AudioPayload):
                 whisper_res = await client.post(WHISPER_SERVICE_URL, json={"audio_data": payload.audio_data})
                 whisper_res.raise_for_status()
                 transcript = whisper_res.json().get("transcript", "")
-            except httpx.HTTPError as e:
-                raise HTTPException(status_code=503, detail=f"Whisper service error: {str(e)}")
+            except httpx.HTTPStatusError as e:
+                try:
+                    detail = e.response.json().get("detail", str(e))
+                except Exception:
+                    detail = str(e)
+                raise HTTPException(status_code=e.response.status_code, detail=f"Whisper service error: {detail}")
+            except httpx.RequestError as e:
+                raise HTTPException(status_code=503, detail=f"Whisper service unreachable: {str(e)}")
                 
             if not transcript:
                 return {"status": "success", "transcript": "", "detected_issues": [], "processing_time_ms": 0}
@@ -59,8 +65,14 @@ async def process_audio(payload: AudioPayload):
                 phrase_res = await client.post(PHRASE_SERVICE_URL, json={"transcript": transcript})
                 phrase_res.raise_for_status()
                 matches = phrase_res.json().get("matches", [])
-            except httpx.HTTPError as e:
-                raise HTTPException(status_code=503, detail=f"Phrase extraction service error: {str(e)}")
+            except httpx.HTTPStatusError as e:
+                try:
+                    detail = e.response.json().get("detail", str(e))
+                except Exception:
+                    detail = str(e)
+                raise HTTPException(status_code=e.response.status_code, detail=f"Phrase extraction service error: {detail}")
+            except httpx.RequestError as e:
+                raise HTTPException(status_code=503, detail=f"Phrase extraction service unreachable: {str(e)}")
 
             # ==========================================
             # 3. Analyze Emotion for Each Target Context
