@@ -20,10 +20,20 @@ def load_model():
     model_path = snapshot_download(repo_id="deepdml/faster-whisper-large-v3-turbo-ct2")
     try:
         # Try GPU execution using int8_float16 quantization for memory efficiency
-        model = WhisperModel(model_path, device="cuda", compute_type="int8_float16") 
+        m = WhisperModel(model_path, device="cuda", compute_type="int8_float16") 
+        # Validate that CUDA libraries (cublas64_12.dll, etc.) actually load during inference
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
+            f.write(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80\x3e\x00\x00\x00\x7d\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
+            tmp_path = f.name
+        try:
+            list(m.transcribe(tmp_path)[0])
+        finally:
+            if os.path.exists(tmp_path):
+                os.remove(tmp_path)
+        model = m
         print("[Whisper Service] GPU Model loaded successfully.")
     except Exception as e:
-        print(f"[Whisper Service] CUDA load failed ({e}), falling back to CPU...")
+        print(f"[Whisper Service] CUDA load/execution failed ({e}), falling back to CPU...")
         model = WhisperModel(model_path, device="cpu", compute_type="int8")
         print("[Whisper Service] CPU Model loaded successfully.")
 
