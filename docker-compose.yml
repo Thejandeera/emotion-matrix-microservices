@@ -1,0 +1,40 @@
+version: '3.8'
+
+services:
+  api-gateway:
+    build: ./api-gateway
+    ports:
+      - "8000:8000"
+    depends_on:
+      - whisper-service
+      - phrase-service
+      - sentiment-service
+
+  whisper-service:
+    build: ./service-whisper
+    ports:
+      - "8001:8001"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  phrase-service:
+    build: ./service-phrase
+    ports:
+      - "8002:8002"
+
+  sentiment-service:
+    build: ./service-sentiment
+    ports:
+      - "8003:8003"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
