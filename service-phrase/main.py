@@ -16,13 +16,16 @@ matcher = None
 @app.on_event("startup")
 def load_spacy():
     global nlp, matcher
-    print("[Phrase Service] Downloading en_core_web_sm...")
-    
-    # Use sys.executable to force it to use the venv's Python, not the global one
-    subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+    try:
+        print("[Phrase Service] Loading en_core_web_sm...")
+        nlp = spacy.load("en_core_web_sm")
+    except OSError:
+        print("[Phrase Service] Model en_core_web_sm not found. Downloading...")
+        # Use sys.executable to force it to use the venv's Python, not the global one
+        subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
+        nlp = spacy.load("en_core_web_sm")
     
     print("[Phrase Service] Configuring PhraseMatcher...")
-    nlp = spacy.load("en_core_web_sm")
     matcher = PhraseMatcher(nlp.vocab, attr="LOWER")
     
     # Static list mapping based on your PoC
