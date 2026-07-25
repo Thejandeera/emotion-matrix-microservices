@@ -22,9 +22,9 @@ ENV/
 *.tmp
 
 # Next.js
-ui/node_modules/
-ui/.next/
-ui/out/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
 
 # OS files
 .DS_Store
