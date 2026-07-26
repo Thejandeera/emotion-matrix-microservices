@@ -21,7 +21,8 @@ export default function EmotionMatrixPage() {
   
   const [isRecording, setIsRecording] = useState<boolean>(false);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const audioChunksRef = useRef<Blob[]>([]);
+  const webSocketRef = useRef<WebSocket | null>(null);
+  const startTimeRef = useRef<number | null>(null);
 
   const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
@@ -41,29 +42,61 @@ export default function EmotionMatrixPage() {
     try {
       resetState();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
-      mediaRecorderRef.current = mediaRecorder;
-      audioChunksRef.current = [];
+      
+      const ws = new WebSocket("ws://localhost:8000/api/v1/live-stream");
+      webSocketRef.current = ws;
+      startTimeRef.current = performance.now();
 
-      mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunksRef.current.push(event.data);
+      ws.onopen = () => {
+        setIsRecording(true);
+        const options = MediaRecorder.isTypeSupported("audio/webm") ? { mimeType: "audio/webm" } : undefined;
+        const mediaRecorder = new MediaRecorder(stream, options);
+        mediaRecorderRef.current = mediaRecorder;
+
+        mediaRecorder.ondataavailable = async (event) => {
+          if (event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
+            const arrayBuffer = await event.data.arrayBuffer();
+            ws.send(arrayBuffer);
+          }
+        };
+
+        // Send audio slices every 250ms for ultra-fast realtime streaming
+        mediaRecorder.start(250);
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.type === "partial") {
+            setTranscript(data.transcript);
+            if (startTimeRef.current) {
+              setProcessingTime(roundToTwo((performance.now() - startTimeRef.current) / 1000));
+            }
+          } else if (data.type === "analyzed") {
+            setTranscript(data.transcript);
+            if (data.detected_issues) {
+              setIssues((prev) => {
+                const existingKeys = new Set(prev.map((i) => `${i.phrase}-${i.isolated_sentence}`));
+                const uniqueNew = data.detected_issues.filter(
+                  (i: DetectedIssue) => !existingKeys.has(`${i.phrase}-${i.isolated_sentence}`)
+                );
+                return [...prev, ...uniqueNew];
+              });
+            }
+          }
+        } catch (err) {
+          console.error("WebSocket message parse error:", err);
         }
       };
 
-      mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          const b64 = result.split(",")[1];
-          setBase64String(b64);
-        };
-        reader.readAsDataURL(audioBlob);
+      ws.onerror = () => {
+        setError("Realtime WebSocket connection failed.");
       };
 
-      mediaRecorder.start();
-      setIsRecording(true);
+      ws.onclose = () => {
+        setIsRecording(false);
+      };
+
     } catch (err) {
       setError("Microphone access denied or unavailable.");
     }
@@ -72,9 +105,12 @@ export default function EmotionMatrixPage() {
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
-      setIsRecording(false);
-      mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
+      mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
     }
+    if (webSocketRef.current) {
+      webSocketRef.current.close();
+    }
+    setIsRecording(false);
   };
 
   const handleSend = async () => {
@@ -117,6 +153,8 @@ export default function EmotionMatrixPage() {
     setError(null);
   };
 
+  const roundToTwo = (num: number) => Math.round(num * 100) / 100;
+
   return (
     <main className="rest-page">
       <div className="rest-container">
@@ -130,20 +168,22 @@ export default function EmotionMatrixPage() {
             <button 
               onClick={isRecording ? stopRecording : startRecording} 
               className="rest-button"
-              style={isRecording ? { backgroundColor: "#ef4444", borderColor: "#ef4444" } : {}}
+              style={isRecording ? { backgroundColor: "#ef4444", borderColor: "#ef4444", color: "#fff" } : {}}
             >
-              {isRecording ? "Stop Recording" : "Start Mic"}
+              {isRecording ? "🔴 Stop Mic (Live Streaming)" : "Start Mic"}
             </button>
           </div>
           
-          <button onClick={handleSend} disabled={isLoading || !base64String} className="rest-button">
-            {isLoading ? "Processing through Gateway..." : "Analyze Audio"}
+          <button onClick={handleSend} disabled={isLoading || !base64String || isRecording} className="rest-button">
+            {isLoading ? "Processing through Gateway..." : "Analyze Audio File"}
           </button>
           {error && <p className="rest-error">{error}</p>}
         </section>
 
         <section className="rest-section">
-          <h2 className="rest-section-title">2. Analysis Results</h2>
+          <h2 className="rest-section-title">
+            2. Analysis Results {isRecording && <span style={{ color: "#ef4444", fontSize: "1rem", marginLeft: "1rem" }}>● REALTIME STREAMING ACTIVE</span>}
+          </h2>
           
           <div className="rest-results-grid">
             <div className="rest-box">
@@ -156,7 +196,7 @@ export default function EmotionMatrixPage() {
             <div className="rest-box rest-transcript-box">
               <h3>Raw Transcript</h3>
               <p className="rest-transcript-text">
-                {transcript || "Waiting for audio..."}
+                {transcript || (isRecording ? "Listening & Transcribing live..." : "Waiting for audio...")}
               </p>
             </div>
           </div>
@@ -190,7 +230,7 @@ export default function EmotionMatrixPage() {
             </div>
           ) : (
             <p className="rest-placeholder">
-              {transcript ? "No critical support phrases detected." : "--"}
+              {transcript ? "No critical support phrases detected yet." : "--"}
             </p>
           )}
         </section>
