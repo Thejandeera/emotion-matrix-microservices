@@ -1,6 +1,34 @@
+import os
+import sys
+import warnings
+import torch
 from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import pipeline
+
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["TOKENIZERS_PARALLELISM"] = "false"
+warnings.filterwarnings("ignore")
+
+# Setup Windows CUDA / cuBLAS / cuDNN DLL directories
+venv_base = sys.prefix
+site_packages_path = os.path.join(venv_base, "Lib", "site-packages")
+cublas_bin = os.path.join(site_packages_path, "nvidia", "cublas", "bin")
+cudnn_bin = os.path.join(site_packages_path, "nvidia", "cudnn", "bin")
+
+if os.path.exists(cublas_bin):
+    os.environ["PATH"] = cublas_bin + os.pathsep + os.environ["PATH"]
+    try:
+        os.add_dll_directory(cublas_bin)
+    except Exception:
+        pass
+
+if os.path.exists(cudnn_bin):
+    os.environ["PATH"] = cudnn_bin + os.pathsep + os.environ["PATH"]
+    try:
+        os.add_dll_directory(cudnn_bin)
+    except Exception:
+        pass
 
 app = FastAPI(title="Sentiment & Emotion Service")
 
@@ -25,15 +53,17 @@ def categorize_emotion(emotion: str, score: float) -> str:
 def load_model():
     global roberta_model
     print("[Sentiment Service] Loading RoBERTa emotion classifier...")
-    roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
-    print("[Sentiment Service] Model loaded successfully.")
+    device = 0 if torch.cuda.is_available() else -1
+    roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions", device=device)
+    print(f"[Sentiment Service] Model loaded successfully on device: {device}.")
 
 @app.post("/analyze-sentiment")
 async def analyze_sentiment(payload: TextPayload):
     if not payload.isolated_sentence:
         return {"emotion": "neutral", "sentiment_category": "neutral", "confidence": 0.0}
         
-    result = roberta_model(payload.isolated_sentence, truncation=True, max_length=512)[0]
+    with torch.inference_mode():
+        result = roberta_model(payload.isolated_sentence, truncation=True, max_length=512)[0]
     
     emotion = result["label"]
     confidence = round(result["score"], 4)
