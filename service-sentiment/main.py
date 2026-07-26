@@ -1,3 +1,4 @@
+import torch
 from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import pipeline
@@ -33,7 +34,8 @@ async def analyze_sentiment(payload: TextPayload):
     if not payload.isolated_sentence:
         return {"emotion": "neutral", "sentiment_category": "neutral", "confidence": 0.0}
         
-    result = roberta_model(payload.isolated_sentence, truncation=True, max_length=512)[0]
+    with torch.inference_mode():
+        result = roberta_model(payload.isolated_sentence, truncation=True, max_length=512)[0]
     
     emotion = result["label"]
     confidence = round(result["score"], 4)

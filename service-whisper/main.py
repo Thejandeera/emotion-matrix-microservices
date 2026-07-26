@@ -16,12 +16,20 @@ model = None
 @app.on_event("startup")
 def load_model():
     global model
-    print("[Whisper Service] Downloading/Loading 'large-v3-turbo' model...")
-    model_path = snapshot_download(repo_id="deepdml/faster-whisper-large-v3-turbo-ct2")
+    model_name_or_path = os.getenv("WHISPER_MODEL", "base")
+    
+    if model_name_or_path == "large-v3-turbo":
+        print("[Whisper Service] Downloading/Loading 'large-v3-turbo' model...")
+        model_name_or_path = snapshot_download(repo_id="deepdml/faster-whisper-large-v3-turbo-ct2")
+    else:
+        print(f"[Whisper Service] Loading '{model_name_or_path}' model...")
+
+    cpu_threads = int(os.getenv("WHISPER_CPU_THREADS", os.cpu_count() or 4))
+
     try:
         # Try GPU execution using int8_float16 quantization for memory efficiency
-        m = WhisperModel(model_path, device="cuda", compute_type="int8_float16") 
-        # Validate that CUDA libraries (cublas64_12.dll, etc.) actually load during inference
+        m = WhisperModel(model_name_or_path, device="cuda", compute_type="int8_float16") 
+        # Validate that CUDA libraries actually load during inference
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
             f.write(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80\x3e\x00\x00\x00\x7d\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
             tmp_path = f.name
@@ -31,11 +39,11 @@ def load_model():
             if os.path.exists(tmp_path):
                 os.remove(tmp_path)
         model = m
-        print("[Whisper Service] GPU Model loaded successfully.")
+        print(f"[Whisper Service] GPU Model '{model_name_or_path}' loaded successfully.")
     except Exception as e:
         print(f"[Whisper Service] CUDA load/execution failed ({e}), falling back to CPU...")
-        model = WhisperModel(model_path, device="cpu", compute_type="int8")
-        print("[Whisper Service] CPU Model loaded successfully.")
+        model = WhisperModel(model_name_or_path, device="cpu", compute_type="int8", cpu_threads=cpu_threads)
+        print(f"[Whisper Service] CPU Model loaded successfully with {cpu_threads} CPU threads.")
 
 @app.post("/transcribe/base64")
 async def transcribe(payload: AudioPayload):
@@ -54,8 +62,14 @@ async def transcribe(payload: AudioPayload):
         raise HTTPException(status_code=400, detail=f"Failed to decode base64: {str(e)}")
 
     try:
-        # Execute VAD-filtered inference 
-        segments, _ = model.transcribe(temp_file_path, beam_size=5, vad_filter=True)
+        # Execute VAD-filtered inference with greedy decoding (beam_size=1) for maximum speed
+        segments, _ = model.transcribe(
+            temp_file_path,
+            beam_size=1,
+            best_of=1,
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500)
+        )
         transcript = " ".join([segment.text for segment in segments]).strip()
     except Exception as e:
         print(f"[Whisper Service Error] Transcription failed: {e}")
