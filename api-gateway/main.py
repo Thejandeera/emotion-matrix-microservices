@@ -101,20 +101,26 @@ async def process_audio(payload: AudioPayload):
         for m in matches:
             sent_key = m.get("isolated_sentence", "").strip()
             if sent_key:
-                phrase_map[sent_key] = m.get("phrase", "N/A")
+                phrase_map[sent_key] = m
 
         items_to_analyze = []
         for sent in sentences:
-            matched_phrase = phrase_map.get(sent)
-            if not matched_phrase:
+            m_info = phrase_map.get(sent)
+            if not m_info:
                 for k, v in phrase_map.items():
                     if k in sent or sent in k:
-                        matched_phrase = v
+                        m_info = v
                         break
             
+            matched_phrase = m_info.get("phrase", "N/A") if m_info else "N/A"
+            kw_sent = m_info.get("keyword_sentiment", "neutral") if m_info else "neutral"
+            kw_weight = m_info.get("keyword_weight", 0) if m_info else 0
+            
             items_to_analyze.append({
-                "phrase": matched_phrase if matched_phrase else "N/A",
-                "isolated_sentence": sent
+                "phrase": matched_phrase,
+                "isolated_sentence": sent,
+                "keyword_sentiment": kw_sent,
+                "keyword_weight": kw_weight
             })
 
       
