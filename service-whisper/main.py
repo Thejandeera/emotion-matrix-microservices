@@ -27,9 +27,7 @@ def load_model():
     cpu_threads = int(os.getenv("WHISPER_CPU_THREADS", os.cpu_count() or 4))
 
     try:
-        # Try GPU execution using int8_float16 quantization for memory efficiency
         m = WhisperModel(model_name_or_path, device="cuda", compute_type="int8_float16") 
-        # Validate that CUDA libraries actually load during inference
         with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as f:
             f.write(b"RIFF\x24\x00\x00\x00WAVEfmt \x10\x00\x00\x00\x01\x00\x01\x00\x80\x3e\x00\x00\x00\x7d\x00\x00\x02\x00\x10\x00data\x00\x00\x00\x00")
             tmp_path = f.name
@@ -51,7 +49,7 @@ async def transcribe(payload: AudioPayload):
         raise HTTPException(status_code=500, detail="Whisper model is not initialized")
 
     try:
-        # Decode the Base64 payload into bytes
+       
         audio_bytes = base64.b64decode(payload.audio_data)
         if not audio_bytes:
             return {"transcript": ""}
@@ -62,7 +60,7 @@ async def transcribe(payload: AudioPayload):
         raise HTTPException(status_code=400, detail=f"Failed to decode base64: {str(e)}")
 
     try:
-        # Execute VAD-filtered inference with greedy decoding (beam_size=1) for maximum speed
+       
         segments, _ = model.transcribe(
             temp_file_path,
             beam_size=1,
@@ -75,7 +73,7 @@ async def transcribe(payload: AudioPayload):
         print(f"[Whisper Service Error] Transcription failed: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid audio format or audio decoding error: {str(e)}")
     finally:
-        # Always clean up the temporary disk file
+       
         if os.path.exists(temp_file_path):
             os.remove(temp_file_path)
 

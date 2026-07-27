@@ -7,7 +7,7 @@ import httpx
 
 app = FastAPI(title="Emotion Matrix API Gateway")
 
-# Allow the Next.js frontend to communicate with this gateway
+
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -27,12 +27,12 @@ app.add_middleware(
 class AudioPayload(BaseModel):
     audio_data: str
 
-# Local network URLs for the microservices
+
 WHISPER_SERVICE_URL = "http://localhost:8001/transcribe/base64"
 PHRASE_SERVICE_URL = "http://localhost:8002/extract-phrases"
 SENTIMENT_SERVICE_URL = "http://localhost:8003/analyze-sentiment"
 
-# Shared HTTPX client with connection pooling
+
 http_client: httpx.AsyncClient = None
 
 @app.on_event("startup")
@@ -53,9 +53,9 @@ async def process_audio(payload: AudioPayload):
         
         client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
         
-        # ==========================================
+     
         # 1. Get Transcript from Whisper Service
-        # ==========================================
+       
         try:
             whisper_res = await client.post(WHISPER_SERVICE_URL, json={"audio_data": payload.audio_data})
             whisper_res.raise_for_status()
@@ -72,9 +72,9 @@ async def process_audio(payload: AudioPayload):
         if not transcript:
             return {"status": "success", "transcript": "", "detected_issues": [], "processing_time_ms": 0}
 
-        # ==========================================
+       
         # 2. Extract Phrases & Context
-        # ==========================================
+       
         try:
             phrase_res = await client.post(PHRASE_SERVICE_URL, json={"transcript": transcript})
             phrase_res.raise_for_status()
@@ -88,18 +88,47 @@ async def process_audio(payload: AudioPayload):
         except httpx.RequestError as e:
             raise HTTPException(status_code=503, detail=f"Phrase extraction service unreachable: {str(e)}")
 
-        # ==========================================
-        # 3. Analyze Emotion for Each Target Context (In Parallel)
-        # ==========================================
-        async def analyze_match(match):
-            isolated_sentence = match["isolated_sentence"]
+       
+        # 3. Prepare All Sentences in Transcript for Emotion Analysis
+        
+        import re
+        raw_sentences = re.split(r'(?<=[.!?])\s+', transcript.strip())
+        sentences = [s.strip() for s in raw_sentences if s.strip()]
+        if not sentences:
+            sentences = [transcript.strip()]
+
+        phrase_map = {}
+        for m in matches:
+            sent_key = m.get("isolated_sentence", "").strip()
+            if sent_key:
+                phrase_map[sent_key] = m.get("phrase", "N/A")
+
+        items_to_analyze = []
+        for sent in sentences:
+            matched_phrase = phrase_map.get(sent)
+            if not matched_phrase:
+                for k, v in phrase_map.items():
+                    if k in sent or sent in k:
+                        matched_phrase = v
+                        break
+            
+            items_to_analyze.append({
+                "phrase": matched_phrase if matched_phrase else "N/A",
+                "isolated_sentence": sent
+            })
+
+      
+        # 4. Analyze Emotion for Each Sentence (In Parallel)
+       
+        async def analyze_sentence(item):
+            isolated_sentence = item["isolated_sentence"]
             try:
                 sentiment_res = await client.post(SENTIMENT_SERVICE_URL, json={"isolated_sentence": isolated_sentence})
                 sentiment_res.raise_for_status()
                 sentiment_data = sentiment_res.json()
                 
                 return {
-                    "phrase": match["phrase"],
+                    "phrase": item["phrase"],
                     "isolated_sentence": isolated_sentence,
                     "emotion": sentiment_data["emotion"],
                     "sentiment_category": sentiment_data["sentiment_category"],
@@ -109,13 +138,13 @@ async def process_audio(payload: AudioPayload):
                 print(f"Warning: Sentiment analysis failed for sentence '{isolated_sentence}': {e}")
                 return None
 
-        results = await asyncio.gather(*(analyze_match(m) for m in matches))
+        results = await asyncio.gather(*(analyze_sentence(item) for item in items_to_analyze))
         final_results = [r for r in results if r is not None]
 
         end_time = time.perf_counter()
         processing_time_ms = round((end_time - start_time) * 1000, 2)
 
-        # Return the fully packaged payload back to the Next.js frontend
+        
         return {
             "status": "success",
             "processing_time_ms": processing_time_ms,

@@ -10,7 +10,7 @@ class TextPayload(BaseModel):
 
 roberta_model = None
 
-# Reusing the categorization logic from your monolithic router
+
 def categorize_emotion(emotion: str, score: float) -> str:
     positive_emotions = {"admiration", "amusement", "approval", "caring", "desire", "excitement", "gratitude", "joy", "love", "optimism", "pride", "relief"}
     negative_emotions = {"anger", "annoyance", "disappointment", "disapproval", "disgust", "embarrassment", "fear", "grief", "nervousness", "remorse", "sadness"}
