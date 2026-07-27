@@ -1,0 +1,615 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Supervisor Configuration Dashboard</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Phosphor Icons for crisp icons -->
+    <script src="https://unpkg.com/@phosphor-icons/web"></script>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        brandOrange: '#ff5722',
+                        orange: {
+                            500: '#ff5722',
+                            600: '#ea4a16',
+                        },
+                        slate: {
+                            850: '#151e2e',
+                            900: '#0f172a',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        /* Custom range slider styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+        }
+
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #ffffff;
+            border: 2px solid #ff5722;
+            cursor: pointer;
+            margin-top: -7px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+        }
+
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 6px;
+            cursor: pointer;
+            background: #e2e8f0;
+            border-radius: 9999px;
+        }
+
+        input[type=range]:focus {
+            outline: none;
+        }
+
+        .sentiment-track::-webkit-slider-runnable-track {
+            background: linear-gradient(to right, #ef4444, #cbd5e1, #22c55e);
+        }
+
+        /* Modal styling */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 50;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(4px);
+        }
+
+        .modal.active {
+            display: flex;
+        }
+    </style>
+</head>
+
+<body class="bg-slate-50 h-screen font-sans text-slate-800 antialiased overflow-y-auto">
+
+    <!-- TOP HEADER -->
+    <header class="bg-white border-b border-slate-200 text-slate-900 shrink-0 sticky top-0 z-10 shadow-xs px-8 py-4">
+        <div class="max-w-[1400px] mx-auto flex justify-between items-center">
+            <div class="flex items-center gap-4">
+                <div
+                    class="w-10 h-10 rounded-full bg-orange-500/10 text-orange-500 flex items-center justify-center font-bold">
+                    <i class="ph ph-sliders text-xl"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl font-bold tracking-tight text-slate-900">
+                        Supervisor Configuration Dashboard
+                    </h1>
+                    <p class="text-slate-500 text-xs mt-0.5 font-medium">Manage team members, analyze weights, and set
+                        alert protocols.</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-4">
+                <div class="text-right mr-2">
+                    <div class="font-bold text-xs text-slate-900">Sarah Jenkins</div>
+                    <div class="text-slate-400 text-[11px] font-medium">Supervisor • Team Alpha</div>
+                </div>
+                <div
+                    class="w-9 h-9 rounded-full bg-orange-50 text-orange-600 flex items-center justify-center border border-orange-200 font-bold text-sm shadow-xs">
+                    <i class="ph-bold ph-user text-base"></i>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTENT CONTAINER -->
+    <main class="p-8 max-w-[1400px] mx-auto flex flex-col gap-8 pb-20">
+
+        <!-- 1. TEAM DIRECTORY SECTION -->
+        <section class="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+                <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i class="ph ph-users text-slate-500 text-lg"></i> Team Directory
+                </h2>
+                <button onclick="openModal('userModal')"
+                    class="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-4 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-2 shadow-xs cursor-pointer active:scale-[0.99]">
+                    <i class="ph-bold ph-plus-circle text-base"></i> Add Team Member
+                </button>
+            </div>
+
+            <div class="p-6">
+                <!-- Search -->
+                <div class="relative mb-6 max-w-md">
+                    <i
+                        class="ph ph-magnifying-glass absolute left-3 top-1/2 transform -translate-y-1/2 text-slate-400 text-base"></i>
+                    <input type="text" placeholder="Search team members by name or extension..."
+                        class="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-xs font-medium bg-white transition-all">
+                </div>
+
+                <!-- Table -->
+                <div class="overflow-x-auto rounded-xl border border-slate-200">
+                    <table class="w-full text-left border-collapse">
+                        <thead>
+                            <tr class="bg-slate-50 text-slate-500 text-[11px] font-bold uppercase tracking-wider">
+                                <th class="px-6 py-3.5 border-b border-slate-200">Agent Name</th>
+                                <th class="px-6 py-3.5 border-b border-slate-200">Extension</th>
+                                <th class="px-6 py-3.5 border-b border-slate-200">Supervisor</th>
+                                <th class="px-6 py-3.5 border-b border-slate-200 text-right">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody class="text-xs divide-y divide-slate-100 font-medium text-slate-700">
+                            <tr class="hover:bg-orange-50/40 transition-colors group">
+                                <td class="px-6 py-4 font-bold text-slate-900 flex items-center gap-2">
+                                    <div
+                                        class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[11px]">
+                                        DM</div>
+                                    David Miller
+                                </td>
+                                <td class="px-6 py-4 font-mono text-slate-500">x1042</td>
+                                <td class="px-6 py-4 text-slate-600">Sarah Jenkins</td>
+                                <td class="px-6 py-4 text-right">
+                                    <button
+                                        class="text-slate-400 hover:text-orange-500 p-1 rounded transition-colors cursor-pointer"><i
+                                            class="ph ph-pencil-simple text-base"></i></button>
+                                    <button
+                                        class="text-slate-400 hover:text-red-500 p-1 rounded transition-colors ml-2 cursor-pointer"><i
+                                            class="ph ph-trash text-base"></i></button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-orange-50/40 transition-colors group">
+                                <td class="px-6 py-4 font-bold text-slate-900 flex items-center gap-2">
+                                    <div
+                                        class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[11px]">
+                                        ER</div>
+                                    Elena Rodriguez
+                                </td>
+                                <td class="px-6 py-4 font-mono text-slate-500">x1045</td>
+                                <td class="px-6 py-4 text-slate-600">Sarah Jenkins</td>
+                                <td class="px-6 py-4 text-right">
+                                    <button
+                                        class="text-slate-400 hover:text-orange-500 p-1 rounded transition-colors cursor-pointer"><i
+                                            class="ph ph-pencil-simple text-base"></i></button>
+                                    <button
+                                        class="text-slate-400 hover:text-red-500 p-1 rounded transition-colors ml-2 cursor-pointer"><i
+                                            class="ph ph-trash text-base"></i></button>
+                                </td>
+                            </tr>
+                            <tr class="hover:bg-orange-50/40 transition-colors group">
+                                <td class="px-6 py-4 font-bold text-slate-900 flex items-center gap-2">
+                                    <div
+                                        class="w-7 h-7 rounded-full bg-slate-100 text-slate-600 flex items-center justify-center font-bold text-[11px]">
+                                        MJ</div>
+                                    Marcus Johnson
+                                </td>
+                                <td class="px-6 py-4 font-mono text-slate-500">x1051</td>
+                                <td class="px-6 py-4 text-slate-600">Sarah Jenkins</td>
+                                <td class="px-6 py-4 text-right">
+                                    <button
+                                        class="text-slate-400 hover:text-orange-500 p-1 rounded transition-colors cursor-pointer"><i
+                                            class="ph ph-pencil-simple text-base"></i></button>
+                                    <button
+                                        class="text-slate-400 hover:text-red-500 p-1 rounded transition-colors ml-2 cursor-pointer"><i
+                                            class="ph ph-trash text-base"></i></button>
+                                </td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. KEYWORD ANALYSIS WEIGHTS SECTION -->
+        <section class="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50/50 flex justify-between items-center">
+                <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i class="ph ph-text-aa text-slate-500 text-lg"></i> Keyword Analysis Weights
+                </h2>
+                <button onclick="openModal('keywordModal')"
+                    class="bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 px-3.5 py-2 rounded-lg text-xs font-semibold transition-colors flex items-center gap-2 shadow-xs cursor-pointer">
+                    <i class="ph ph-plus text-base text-orange-500"></i> Add Keyword
+                </button>
+            </div>
+
+            <div class="p-6">
+                <p class="text-xs text-slate-500 mb-6 font-medium">Assign a weight (0-100) to specific words. A higher
+                    weight means
+                    the word will have a stronger impact on the overall automated sentiment calculation.</p>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+
+                    <!-- Keyword Card 1 -->
+                    <div class="border border-slate-200 rounded-xl p-4 bg-slate-50/40 hover:shadow-xs transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+                                refund
+                            </span>
+                            <div class="flex gap-1 text-slate-400">
+                                <button class="hover:text-orange-500 transition-colors p-1 cursor-pointer"><i
+                                        class="ph ph-pencil-simple text-sm"></i></button>
+                                <button class="hover:text-red-500 transition-colors p-1 cursor-pointer"><i
+                                        class="ph ph-trash text-sm"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-xs text-slate-500 mb-2 font-medium">
+                            <span>Impact Weight</span>
+                            <span
+                                class="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 text-[11px]"
+                                id="val-kw1">85</span>
+                        </div>
+                        <input type="range" min="0" max="100" value="85" class="w-full accent-orange-500"
+                            oninput="document.getElementById('val-kw1').innerText = this.value">
+                    </div>
+
+                    <!-- Keyword Card 2 -->
+                    <div class="border border-slate-200 rounded-xl p-4 bg-slate-50/40 hover:shadow-xs transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-50 text-orange-800 border border-orange-200">
+                                manager
+                            </span>
+                            <div class="flex gap-1 text-slate-400">
+                                <button class="hover:text-orange-500 transition-colors p-1 cursor-pointer"><i
+                                        class="ph ph-pencil-simple text-sm"></i></button>
+                                <button class="hover:text-red-500 transition-colors p-1 cursor-pointer"><i
+                                        class="ph ph-trash text-sm"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-xs text-slate-500 mb-2 font-medium">
+                            <span>Impact Weight</span>
+                            <span
+                                class="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 text-[11px]"
+                                id="val-kw2">70</span>
+                        </div>
+                        <input type="range" min="0" max="100" value="70" class="w-full accent-orange-500"
+                            oninput="document.getElementById('val-kw2').innerText = this.value">
+                    </div>
+
+                    <!-- Keyword Card 3 -->
+                    <div class="border border-slate-200 rounded-xl p-4 bg-slate-50/40 hover:shadow-xs transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-red-50 text-red-700 border border-red-200">
+                                complaint
+                            </span>
+                            <div class="flex gap-1 text-slate-400">
+                                <button class="hover:text-orange-500 transition-colors p-1 cursor-pointer"><i
+                                        class="ph ph-pencil-simple text-sm"></i></button>
+                                <button class="hover:text-red-500 transition-colors p-1 cursor-pointer"><i
+                                        class="ph ph-trash text-sm"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-xs text-slate-500 mb-2 font-medium">
+                            <span>Impact Weight</span>
+                            <span
+                                class="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 text-[11px]"
+                                id="val-kw3">90</span>
+                        </div>
+                        <input type="range" min="0" max="100" value="90" class="w-full accent-orange-500"
+                            oninput="document.getElementById('val-kw3').innerText = this.value">
+                    </div>
+
+                    <!-- Keyword Card 4 -->
+                    <div class="border border-slate-200 rounded-xl p-4 bg-slate-50/40 hover:shadow-xs transition-all">
+                        <div class="flex justify-between items-start mb-3">
+                            <span
+                                class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                excellent
+                            </span>
+                            <div class="flex gap-1 text-slate-400">
+                                <button class="hover:text-orange-500 transition-colors p-1 cursor-pointer"><i
+                                        class="ph ph-pencil-simple text-sm"></i></button>
+                                <button class="hover:text-red-500 transition-colors p-1 cursor-pointer"><i
+                                        class="ph ph-trash text-sm"></i></button>
+                            </div>
+                        </div>
+                        <div class="flex items-center justify-between text-xs text-slate-500 mb-2 font-medium">
+                            <span>Impact Weight</span>
+                            <span
+                                class="font-mono font-bold text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200 text-[11px]"
+                                id="val-kw4">60</span>
+                        </div>
+                        <input type="range" min="0" max="100" value="60" class="w-full accent-orange-500"
+                            oninput="document.getElementById('val-kw4').innerText = this.value">
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. ALERT PROTOCOL SETTINGS SECTION -->
+        <section class="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+            <div class="px-6 py-4 border-b border-slate-200 bg-slate-50/50">
+                <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+                    <i class="ph ph-bell-ringing text-slate-500 text-lg"></i> Alert Protocol Settings
+                </h2>
+            </div>
+
+            <div class="p-6 grid grid-cols-1 md:grid-cols-2 gap-8">
+
+                <!-- Left: Alert Threshold -->
+                <div>
+                    <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">Sentiment Alert
+                        Threshold</h3>
+                    <p class="text-xs text-slate-500 mb-6 font-medium">Select the sentiment score level that should
+                        trigger a
+                        supervisor alert. Scores falling below this threshold (into the red) will initiate the
+                        notification protocol.</p>
+
+                    <div class="bg-slate-50/70 border border-slate-200 rounded-xl p-5">
+                        <div class="flex justify-between items-end mb-4">
+                            <div>
+                                <span
+                                    class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Trigger
+                                    Level</span>
+                                <span class="text-3xl font-extrabold text-red-600 tracking-tight"
+                                    id="alert-val-display">-45%</span>
+                            </div>
+                            <div class="text-xs font-bold text-slate-500">
+                                <span id="alert-desc"
+                                    class="px-2 py-0.5 bg-white border border-slate-200 rounded-md">Moderate
+                                    Negative</span>
+                            </div>
+                        </div>
+
+                        <!-- Specialized Gradient Slider -->
+                        <div class="relative pt-2 pb-6">
+                            <input type="range" min="-100" max="100" value="-45"
+                                class="w-full sentiment-track relative z-10 cursor-pointer" id="alert-slider">
+
+                            <!-- Scale Labels -->
+                            <div
+                                class="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-2 absolute w-full bottom-0 px-0.5">
+                                <span>-100% (High Neg)</span>
+                                <span>0% (Neutral)</span>
+                                <span>+100% (High Pos)</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right: Notification Methods -->
+                <div>
+                    <h3 class="text-xs font-bold text-slate-900 uppercase tracking-wider mb-1.5">Notification Methods
+                    </h3>
+                    <p class="text-xs text-slate-500 mb-6 font-medium">How would you like to be notified when a live
+                        call breaches
+                        the established sentiment threshold?</p>
+
+                    <div class="space-y-3">
+                        <!-- Checkbox Option 1 -->
+                        <label
+                            class="flex items-start gap-3 p-3.5 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors bg-white">
+                            <div class="flex items-center h-5 mt-0.5">
+                                <input type="checkbox" checked
+                                    class="w-4 h-4 text-orange-500 bg-slate-50 border-slate-300 rounded focus:ring-orange-500 focus:ring-2 accent-orange-500 cursor-pointer">
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2">
+                                    <i class="ph ph-desktop text-orange-500 text-base"></i>
+                                    <span class="text-xs font-bold text-slate-900">In-App Dashboard Alert</span>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-0.5">Displays a prominent notification card within
+                                    the
+                                    live monitor interface.</p>
+                            </div>
+                        </label>
+
+                        <!-- Checkbox Option 2 -->
+                        <label
+                            class="flex items-start gap-3 p-3.5 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors bg-white">
+                            <div class="flex items-center h-5 mt-0.5">
+                                <input type="checkbox" checked
+                                    class="w-4 h-4 text-orange-500 bg-slate-50 border-slate-300 rounded focus:ring-orange-500 focus:ring-2 accent-orange-500 cursor-pointer">
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2">
+                                    <i class="ph ph-browser text-orange-500 text-base"></i>
+                                    <span class="text-xs font-bold text-slate-900">Browser Push Notification</span>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-0.5">Sends a native OS notification even if the
+                                    dashboard is in the background.</p>
+                            </div>
+                        </label>
+
+                        <!-- Checkbox Option 3 -->
+                        <label
+                            class="flex items-start gap-3 p-3.5 border border-slate-200 rounded-xl cursor-pointer hover:bg-slate-50 transition-colors bg-white">
+                            <div class="flex items-center h-5 mt-0.5">
+                                <input type="checkbox"
+                                    class="w-4 h-4 text-orange-500 bg-slate-50 border-slate-300 rounded focus:ring-orange-500 focus:ring-2 accent-orange-500 cursor-pointer">
+                            </div>
+                            <div class="flex-1">
+                                <div class="flex items-center gap-2">
+                                    <i class="ph ph-envelope-simple text-slate-400 text-base"></i>
+                                    <span class="text-xs font-bold text-slate-900">Email Notification</span>
+                                </div>
+                                <p class="text-xs text-slate-500 mt-0.5">Sends an alert to s.jenkins@company.com with
+                                    call
+                                    details.</p>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Save Action -->
+            <div class="px-6 py-4 border-t border-slate-200 bg-slate-50/50 flex justify-end">
+                <button
+                    class="bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white px-6 py-2.5 rounded-xl text-xs font-bold transition-all shadow-xs flex items-center gap-2 cursor-pointer active:scale-[0.99]">
+                    <i class="ph-bold ph-floppy-disk text-base"></i> Save Configuration
+                </button>
+            </div>
+        </section>
+
+    </main>
+
+
+    <!-- Add User Modal -->
+    <div id="userModal" class="modal items-center justify-center">
+        <div
+            class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md mx-4 overflow-hidden transform transition-all">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+                <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="ph-bold ph-user-plus text-orange-500 text-base"></i> Add Team Member
+                </h3>
+                <button onclick="closeModal('userModal')"
+                    class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"><i
+                        class="ph ph-x text-lg"></i></button>
+            </div>
+            <div class="p-6 space-y-4 text-xs">
+                <div>
+                    <label class="block font-semibold text-slate-700 uppercase tracking-wider text-[10px] mb-1.5">Agent
+                        Name</label>
+                    <input type="text" placeholder="e.g. Jane Doe"
+                        class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-xs font-medium">
+                </div>
+                <div>
+                    <label
+                        class="block font-semibold text-slate-700 uppercase tracking-wider text-[10px] mb-1.5">Extension
+                        Number</label>
+                    <input type="text" placeholder="e.g. x1055"
+                        class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-xs font-mono">
+                </div>
+            </div>
+            <div class="px-6 py-3.5 border-t border-slate-200 bg-slate-50/50 flex justify-end gap-2.5">
+                <button onclick="closeModal('userModal')"
+                    class="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer">Cancel</button>
+                <button onclick="closeModal('userModal')"
+                    class="px-5 py-2 text-xs font-bold bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl transition-all shadow-xs cursor-pointer">Add
+                    Member</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Keyword Modal -->
+    <div id="keywordModal" class="modal items-center justify-center">
+        <div
+            class="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md mx-4 overflow-hidden transform transition-all">
+            <div class="px-6 py-4 border-b border-slate-200 flex justify-between items-center bg-slate-50/50">
+                <h3 class="font-bold text-slate-900 text-sm flex items-center gap-2">
+                    <i class="ph-bold ph-tag text-orange-500 text-base"></i> Add Monitored Keyword
+                </h3>
+                <button onclick="closeModal('keywordModal')"
+                    class="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors cursor-pointer"><i
+                        class="ph ph-x text-lg"></i></button>
+            </div>
+            <div class="p-6 space-y-4 text-xs">
+                <div>
+                    <label
+                        class="block font-semibold text-slate-700 uppercase tracking-wider text-[10px] mb-1.5">Keyword
+                        or Phrase</label>
+                    <input type="text" placeholder="e.g. cancel account"
+                        class="w-full px-3.5 py-2 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-orange-500 focus:border-transparent text-xs font-medium">
+                </div>
+                <div>
+                    <label
+                        class="block font-semibold text-slate-700 uppercase tracking-wider text-[10px] mb-1.5">Sentiment
+                        (Color Category)</label>
+                    <div class="flex items-center gap-4">
+                        <label class="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                            <input type="radio" name="sentiment" value="positive"
+                                class="text-emerald-500 focus:ring-emerald-500 border-slate-300 accent-emerald-500 cursor-pointer">
+                            Positive (Green)
+                        </label>
+                        <label class="flex items-center gap-2 cursor-pointer text-xs font-medium text-slate-700">
+                            <input type="radio" name="sentiment" value="negative"
+                                class="text-red-500 focus:ring-red-500 border-slate-300 accent-red-500 cursor-pointer"
+                                checked>
+                            Negative (Red)
+                        </label>
+                    </div>
+                </div>
+                <div>
+                    <label
+                        class="block font-semibold text-slate-700 uppercase tracking-wider text-[10px] mb-1.5 flex justify-between">
+                        <span>Initial Impact Weight</span>
+                        <span id="new-kw-val"
+                            class="font-mono font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded border border-orange-200">50</span>
+                    </label>
+                    <input type="range" min="0" max="100" value="50" class="w-full mt-2 accent-orange-500"
+                        oninput="document.getElementById('new-kw-val').innerText = this.value">
+                    <p class="text-[10px] text-slate-400 mt-2 font-medium">Weight determines how strongly this word
+                        affects the
+                        automated scoring algorithm.</p>
+                </div>
+            </div>
+            <div class="px-6 py-3.5 border-t border-slate-200 bg-slate-50/50 flex justify-end gap-2.5">
+                <button onclick="closeModal('keywordModal')"
+                    class="px-4 py-2 text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:bg-slate-50 rounded-xl transition-colors cursor-pointer">Cancel</button>
+                <button onclick="closeModal('keywordModal')"
+                    class="px-5 py-2 text-xs font-bold bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white rounded-xl transition-all shadow-xs cursor-pointer">Add
+                    Keyword</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Modal logic
+        function openModal(id) {
+            document.getElementById(id).classList.add('active');
+        }
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('active');
+        }
+
+        // Close modals on outside click
+        window.onclick = function (event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.classList.remove('active');
+            }
+        }
+
+        // Sentiment Alert Slider Logic
+        const alertSlider = document.getElementById('alert-slider');
+        const alertDisplay = document.getElementById('alert-val-display');
+        const alertDesc = document.getElementById('alert-desc');
+
+        function updateAlertVisuals() {
+            const val = parseInt(alertSlider.value);
+            alertDisplay.innerText = val > 0 ? `+${val}%` : `${val}%`;
+
+            // Color and text updates based on threshold
+            if (val < -60) {
+                alertDisplay.className = "text-3xl font-extrabold text-red-700 tracking-tight";
+                alertDesc.innerText = "Severe Negative";
+            } else if (val < -20) {
+                alertDisplay.className = "text-3xl font-extrabold text-red-500 tracking-tight";
+                alertDesc.innerText = "Moderate Negative";
+            } else if (val <= 20) {
+                alertDisplay.className = "text-3xl font-extrabold text-slate-500 tracking-tight";
+                alertDesc.innerText = "Neutral Zone";
+            } else if (val <= 60) {
+                alertDisplay.className = "text-3xl font-extrabold text-emerald-500 tracking-tight";
+                alertDesc.innerText = "Moderate Positive";
+            } else {
+                alertDisplay.className = "text-3xl font-extrabold text-emerald-700 tracking-tight";
+                alertDesc.innerText = "Highly Positive";
+            }
+        }
+
+        alertSlider.addEventListener('input', updateAlertVisuals);
+        // Init visual
+        updateAlertVisuals();
+    </script>
+</body>
+
+</html>
