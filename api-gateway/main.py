@@ -7,7 +7,6 @@ import httpx
 
 app = FastAPI(title="Emotion Matrix API Gateway")
 
-
 origins = [
     "http://localhost:3000",
     "http://127.0.0.1:3000",
@@ -27,11 +26,9 @@ app.add_middleware(
 class AudioPayload(BaseModel):
     audio_data: str
 
-
 WHISPER_SERVICE_URL = "http://localhost:8001/transcribe/base64"
 PHRASE_SERVICE_URL = "http://localhost:8002/extract-phrases"
-SENTIMENT_SERVICE_URL = "http://localhost:8003/analyze-sentiment"
-
+SENTIMENT_BATCH_SERVICE_URL = "http://localhost:8003/analyze-sentiment-batch"
 
 http_client: httpx.AsyncClient = None
 
@@ -53,9 +50,7 @@ async def process_audio(payload: AudioPayload):
         
         client = http_client if http_client is not None else httpx.AsyncClient(timeout=30.0)
         
-     
         # 1. Get Transcript from Whisper Service
-       
         try:
             whisper_res = await client.post(WHISPER_SERVICE_URL, json={"audio_data": payload.audio_data})
             whisper_res.raise_for_status()
@@ -72,9 +67,7 @@ async def process_audio(payload: AudioPayload):
         if not transcript:
             return {"status": "success", "transcript": "", "detected_issues": [], "processing_time_ms": 0}
 
-       
         # 2. Extract Phrases & Context
-       
         try:
             phrase_res = await client.post(PHRASE_SERVICE_URL, json={"transcript": transcript})
             phrase_res.raise_for_status()
@@ -88,9 +81,7 @@ async def process_audio(payload: AudioPayload):
         except httpx.RequestError as e:
             raise HTTPException(status_code=503, detail=f"Phrase extraction service unreachable: {str(e)}")
 
-       
         # 3. Prepare All Sentences in Transcript for Emotion Analysis
-        
         import re
         raw_sentences = re.split(r'(?<=[.!?])\s+', transcript.strip())
         sentences = [s.strip() for s in raw_sentences if s.strip()]
@@ -123,43 +114,48 @@ async def process_audio(payload: AudioPayload):
                 "keyword_weight": kw_weight
             })
 
-      
-        # 4. Analyze Emotion for Each Sentence (In Parallel)
-       
-        async def analyze_sentence(item):
-            isolated_sentence = item["isolated_sentence"]
-            try:
-                # Pass the new metadata to the sentiment service
-                req_payload = {
-                    "isolated_sentence": isolated_sentence,
-                    "keyword_sentiment": item.get("keyword_sentiment", "neutral"),
-                    "keyword_weight": item.get("keyword_weight", 0)
-                }
-                
-                sentiment_res = await client.post(SENTIMENT_SERVICE_URL, json=req_payload)
-                sentiment_res.raise_for_status()
-                sentiment_data = sentiment_res.json()
-                
-                return {
-                    "phrase": item["phrase"],
-                    "isolated_sentence": isolated_sentence,
-                    "keyword_sentiment": item.get("keyword_sentiment", "neutral"),
-                    "keyword_weight": item.get("keyword_weight", 0),
-                    "emotion": sentiment_data["emotion"],
-                    "sentiment_category": sentiment_data["sentiment_category"],
-                    "confidence": sentiment_data["confidence"]
-                }
-            except httpx.HTTPError as e:
-                print(f"Warning: Sentiment analysis failed for sentence '{isolated_sentence}': {e}")
-                return None
+        # 4. Single High-Speed Vectorized Batch Call to Sentiment Microservice
+        batch_payload_items = [
+            {
+                "isolated_sentence": item["isolated_sentence"],
+                "keyword_sentiment": item["keyword_sentiment"],
+                "keyword_weight": item["keyword_weight"]
+            }
+            for item in items_to_analyze
+        ]
 
-        results = await asyncio.gather(*(analyze_sentence(item) for item in items_to_analyze))
-        final_results = [r for r in results if r is not None]
+        final_results = []
+        try:
+            sentiment_res = await client.post(SENTIMENT_BATCH_SERVICE_URL, json={"items": batch_payload_items})
+            sentiment_res.raise_for_status()
+            batch_outputs = sentiment_res.json().get("results", [])
+            
+            for item, s_data in zip(items_to_analyze, batch_outputs):
+                final_results.append({
+                    "phrase": item["phrase"],
+                    "isolated_sentence": item["isolated_sentence"],
+                    "keyword_sentiment": item["keyword_sentiment"],
+                    "keyword_weight": item["keyword_weight"],
+                    "emotion": s_data.get("emotion", "neutral"),
+                    "sentiment_category": s_data.get("sentiment_category", "neutral"),
+                    "confidence": s_data.get("confidence", 0.0)
+                })
+        except Exception as e:
+            print(f"Warning: Sentiment batch analysis error: {e}")
+            for item in items_to_analyze:
+                final_results.append({
+                    "phrase": item["phrase"],
+                    "isolated_sentence": item["isolated_sentence"],
+                    "keyword_sentiment": item["keyword_sentiment"],
+                    "keyword_weight": item["keyword_weight"],
+                    "emotion": "neutral",
+                    "sentiment_category": "neutral",
+                    "confidence": 0.0
+                })
 
         end_time = time.perf_counter()
         processing_time_ms = round((end_time - start_time) * 1000, 2)
 
-        
         return {
             "status": "success",
             "processing_time_ms": processing_time_ms,

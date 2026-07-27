@@ -63,9 +63,11 @@ async def transcribe(payload: AudioPayload):
        
         segments, _ = model.transcribe(
             temp_file_path,
+            language="en",
             beam_size=1,
             best_of=1,
             vad_filter=True,
+            condition_on_previous_text=False,
             vad_parameters=dict(min_silence_duration_ms=500)
         )
         transcript = " ".join([segment.text for segment in segments]).strip()
