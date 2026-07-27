@@ -130,9 +130,9 @@ async def process_audio(payload: AudioPayload):
                 return {
                     "phrase": item["phrase"],
                     "isolated_sentence": isolated_sentence,
-                    "emotion": sentiment_data["emotion"],
+                    # "emotion": sentiment_data["emotion"],
                     "sentiment_category": sentiment_data["sentiment_category"],
-                    "confidence": sentiment_data["confidence"]
+                    # "confidence": sentiment_data["confidence"]
                 }
             except httpx.HTTPError as e:
                 print(f"Warning: Sentiment analysis failed for sentence '{isolated_sentence}': {e}")
