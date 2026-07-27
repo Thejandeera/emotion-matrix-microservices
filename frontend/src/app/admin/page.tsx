@@ -7,11 +7,12 @@ import {
   User,
   TextAa,
   Plus,
-  FloppyDisk,
   Tag,
   X,
-  PencilSimple,
-  Trash
+  Trash,
+  Spinner,
+  WarningCircle,
+  ArrowsClockwise
 } from "@phosphor-icons/react";
 
 const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwudCW1hW9TbEV3btIXJl9rYi3GYU2E1jQ55mAXj9LAniuG8i0SLPMmrRrgWgsdHAQWA/exec";
@@ -25,64 +26,64 @@ interface KeywordData {
 export default function AdminDashboard() {
   // Keyword Analysis Weights State
   const [keywords, setKeywords] = useState<KeywordData[]>([]);
-  const [isSaving, setIsSaving] = useState(false);
-  const [showKeywordModal, setShowKeywordModal] = useState(false);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [networkError, setNetworkError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [showKeywordModal, setShowKeywordModal] = useState<boolean>(false);
   const [newKwWord, setNewKwWord] = useState("");
   const [newKwSentiment, setNewKwSentiment] = useState("negative");
   const [newKwWeight, setNewKwWeight] = useState(50);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
-  const defaultKeywords: KeywordData[] = [
-    { keyword: "refund", sentiment: "negative", weight: 85 },
-    { keyword: "manager", sentiment: "negative", weight: 70 },
-    { keyword: "complaint", sentiment: "negative", weight: 90 },
-    { keyword: "excellent", sentiment: "positive", weight: 60 },
-  ];
+  // Load actual initial keywords directly from Google Apps Script (NO DEFAULT FALLBACKS)
+  const fetchRemoteKeywords = async () => {
+    setIsLoading(true);
+    setNetworkError(null);
+    try {
+      const res = await fetch(APPS_SCRIPT_URL, { method: "GET" });
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} - Google Apps Script returned an error.`);
+      }
+      const data = await res.json();
+      if (Array.isArray(data)) {
+        setKeywords(data);
+      } else {
+        throw new Error("Invalid response format from Google Apps Script.");
+      }
+    } catch (err: any) {
+      console.error("Network error loading keywords:", err);
+      setNetworkError(err?.message || "Failed to load keywords. Network connection or endpoint error.");
+      setKeywords([]);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
-  // Load initial keywords from Google Apps Script with safe error handling
   useEffect(() => {
-    let isMounted = true;
-    const loadKeywords = async () => {
-      try {
-        const res = await fetch(APPS_SCRIPT_URL, { method: "GET" });
-        if (res.ok) {
-          const data = await res.json();
-          if (isMounted && Array.isArray(data) && data.length > 0) {
-            setKeywords(data);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn("Could not fetch remote Google Sheets keywords, using defaults:", err);
-      }
-      if (isMounted) {
-        setKeywords(defaultKeywords);
-      }
-    };
-    loadKeywords();
-    return () => {
-      isMounted = false;
-    };
+    fetchRemoteKeywords();
   }, []);
 
   // Keyword Actions
-  const handleAddKeyword = () => {
+  const handleAddKeyword = async () => {
     if (!newKwWord.trim()) return;
     const kwObj: KeywordData = {
       keyword: newKwWord.trim().toLowerCase(),
       sentiment: newKwSentiment,
       weight: newKwWeight,
     };
-    setKeywords([...keywords, kwObj]);
+    const updated = [...keywords, kwObj];
+    setKeywords(updated);
     setNewKwWord("");
     setNewKwWeight(50);
     setShowKeywordModal(false);
+    autoSave(updated);
   };
 
   const handleRemoveKeyword = (index: number) => {
     const updated = [...keywords];
     updated.splice(index, 1);
     setKeywords(updated);
+    autoSave(updated);
   };
 
   const handleWeightChange = (index: number, val: number) => {
@@ -91,15 +92,20 @@ export default function AdminDashboard() {
     setKeywords(updated);
   };
 
-  const saveConfiguration = async () => {
+  // Save to Google Sheets
+  const autoSave = async (updatedList: KeywordData[]) => {
     setIsSaving(true);
+    setNetworkError(null);
     try {
-      const payload = encodeURIComponent(JSON.stringify(keywords));
-      await fetch(`${APPS_SCRIPT_URL}?action=save&data=${payload}`);
-      setSaveSuccessMessage("Configuration successfully synced to Google Sheets!");
-      setTimeout(() => setSaveSuccessMessage(null), 4000);
-    } catch (error) {
-      alert("Failed to save to Google Sheets.");
+      const payload = encodeURIComponent(JSON.stringify(updatedList));
+      const res = await fetch(`${APPS_SCRIPT_URL}?action=save&data=${payload}`);
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status} failed to save data.`);
+      }
+      setSaveSuccessMessage("Successfully saved to Google Sheets");
+      setTimeout(() => setSaveSuccessMessage(null), 3500);
+    } catch (err: any) {
+      setNetworkError("Failed to save changes to Google Sheets. Network error.");
     } finally {
       setIsSaving(false);
     }
@@ -145,12 +151,35 @@ export default function AdminDashboard() {
           </div>
         )}
 
+        {/* NETWORK ERROR ALERT */}
+        {networkError && (
+          <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '1rem 1.25rem', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 600 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
+              <WarningCircle size={20} style={{ color: '#ef4444' }} />
+              <span>Network Error: {networkError}</span>
+            </div>
+            <button
+              onClick={fetchRemoteKeywords}
+              style={{ backgroundColor: '#ffffff', border: '1px solid #fecaca', color: '#b91c1c', padding: '0.35rem 0.75rem', borderRadius: '6px', fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+            >
+              <ArrowsClockwise size={14} /> Retry Connection
+            </button>
+          </div>
+        )}
+
         {/* KEYWORD ANALYSIS WEIGHTS SECTION */}
         <section className="admin-section">
           <div className="admin-section-header">
-            <h2 className="admin-section-title">
-              <TextAa size={20} style={{ color: '#64748b' }} /> Keyword Analysis Weights
-            </h2>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <h2 className="admin-section-title">
+                <TextAa size={20} style={{ color: '#64748b' }} /> Keyword Analysis Weights
+              </h2>
+              {isSaving && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: '#ff5722', fontWeight: 600 }}>
+                  <Spinner size={14} className="animate-spin" /> Saving...
+                </div>
+              )}
+            </div>
             <button onClick={() => setShowKeywordModal(true)} className="btn-secondary">
               <Plus size={16} style={{ color: '#ff5722' }} /> Add Keyword
             </button>
@@ -158,43 +187,53 @@ export default function AdminDashboard() {
 
           <div className="admin-section-body">
             <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.5rem', fontWeight: 500 }}>
-              Assign a weight (0-100) to specific words. A higher weight means the word will have a stronger impact on the overall automated sentiment calculation.
+              Assign a weight (0-100) to specific words. Real configuration loaded live from Google Sheets endpoint.
             </p>
 
-            <div className="keywords-grid">
-              {keywords.map((kw, idx) => (
-                <div key={idx} className="keyword-card">
-                  <div className="keyword-card-top">
-                    <span className={`keyword-badge ${kw.sentiment === 'negative' ? 'badge-neg' : 'badge-pos'}`}>
-                      {kw.keyword}
-                    </span>
-                    <div style={{ display: 'flex', gap: '0.25rem' }}>
-                      <button onClick={() => handleRemoveKeyword(idx)} className="action-icon-btn delete" title="Delete Keyword">
-                        <Trash size={14} />
-                      </button>
+            {/* LOADING STATE */}
+            {isLoading ? (
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 1rem', color: '#64748b', gap: '0.5rem' }}>
+                <Spinner size={24} className="animate-spin" style={{ color: '#ff5722' }} />
+                <span style={{ fontSize: '0.8rem', fontWeight: 600 }}>Loading keywords from Google Sheets...</span>
+              </div>
+            ) : keywords.length > 0 ? (
+              <div className="keywords-grid">
+                {keywords.map((kw, idx) => (
+                  <div key={idx} className="keyword-card">
+                    <div className="keyword-card-top">
+                      <span className={`keyword-badge ${kw.sentiment === 'negative' ? 'badge-neg' : 'badge-pos'}`}>
+                        {kw.keyword}
+                      </span>
+                      <div style={{ display: 'flex', gap: '0.25rem' }}>
+                        <button onClick={() => handleRemoveKeyword(idx)} className="action-icon-btn delete" title="Delete Keyword">
+                          <Trash size={14} />
+                        </button>
+                      </div>
                     </div>
+                    <div className="keyword-weight-row">
+                      <span>Impact Weight</span>
+                      <span className="weight-val-badge">{kw.weight}</span>
+                    </div>
+                    <input
+                      type="range"
+                      min="0"
+                      max="100"
+                      value={kw.weight}
+                      onChange={(e) => handleWeightChange(idx, parseInt(e.target.value))}
+                      onMouseUp={() => autoSave(keywords)}
+                      onTouchEnd={() => autoSave(keywords)}
+                      className="accent-range"
+                    />
                   </div>
-                  <div className="keyword-weight-row">
-                    <span>Impact Weight</span>
-                    <span className="weight-val-badge">{kw.weight}</span>
-                  </div>
-                  <input
-                    type="range"
-                    min="0"
-                    max="100"
-                    value={kw.weight}
-                    onChange={(e) => handleWeightChange(idx, parseInt(e.target.value))}
-                    className="accent-range"
-                  />
+                ))}
+              </div>
+            ) : (
+              !networkError && (
+                <div style={{ padding: '2rem', textAlign: 'center', color: '#94a3b8', fontSize: '0.8rem' }}>
+                  No keywords configured in Google Sheets. Click <strong>Add Keyword</strong> to add one.
                 </div>
-              ))}
-            </div>
-          </div>
-
-          <div style={{ padding: '1rem 1.5rem', borderTop: '1px solid #e2e8f0', backgroundColor: '#f8fafc', display: 'flex', justifyContent: 'flex-end' }}>
-            <button onClick={saveConfiguration} disabled={isSaving} className="btn-primary">
-              <FloppyDisk size={16} weight="bold" /> {isSaving ? "Saving..." : "Sync to Google Sheets"}
-            </button>
+              )
+            )}
           </div>
         </section>
       </main>
