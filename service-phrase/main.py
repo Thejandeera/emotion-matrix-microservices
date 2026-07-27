@@ -21,14 +21,13 @@ def load_spacy():
         nlp = spacy.load("en_core_web_sm")
     except OSError:
         print("[Phrase Service] Model en_core_web_sm not found. Downloading...")
-        # Use sys.executable to force it to use the venv's Python, not the global one
         subprocess.run([sys.executable, "-m", "spacy", "download", "en_core_web_sm"])
         nlp = spacy.load("en_core_web_sm")
     
     print("[Phrase Service] Configuring PhraseMatcher...")
     matcher = PhraseMatcher(nlp.vocab, attr="LOWER")
     
-    # Static list mapping based on your PoC
+
     target_phrases = [
         "wrong item", "overcharged on my monthly bill", "money back",
         "ruined my trip", "internet has been down", "completely unacceptable", "speak to a manager"
@@ -52,7 +51,7 @@ async def extract_phrases(payload: TextPayload):
         matched_span = doc[start:end]
         isolated_sentence = matched_span.sent.text.strip()
         
-        # Avoid duplicate analysis if multiple keyphrases exist in one sentence
+   
         if isolated_sentence not in analyzed_sentences:
             results.append({
                 "phrase": matched_span.text,
