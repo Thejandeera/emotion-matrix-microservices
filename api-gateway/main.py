@@ -143,6 +143,8 @@ async def process_audio(payload: AudioPayload):
                 return {
                     "phrase": item["phrase"],
                     "isolated_sentence": isolated_sentence,
+                    "keyword_sentiment": item.get("keyword_sentiment", "neutral"),
+                    "keyword_weight": item.get("keyword_weight", 0),
                     "emotion": sentiment_data["emotion"],
                     "sentiment_category": sentiment_data["sentiment_category"],
                     "confidence": sentiment_data["confidence"]

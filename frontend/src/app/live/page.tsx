@@ -33,6 +33,8 @@ import {
 interface DetectedIssue {
   phrase: string;
   isolated_sentence: string;
+  keyword_sentiment?: string;
+  keyword_weight?: number;
   emotion: string;
   sentiment_category: string;
   confidence: number;
@@ -204,9 +206,8 @@ export default function LiveMonitor() {
   };
 
   // ================= CALCULATION LOGIC FROM REAL DATA ================= //
-  const negativeItems = issues.filter((i) => i.sentiment_category === "negative");
-  const positiveItems = issues.filter((i) => i.sentiment_category === "positive");
-  const neutralItems = issues.filter((i) => i.sentiment_category === "neutral");
+  const negativeItems = issues.filter((i) => (i.keyword_sentiment || i.sentiment_category) === "negative");
+  const positiveItems = issues.filter((i) => (i.keyword_sentiment || i.sentiment_category) === "positive");
 
   // Calculate Real Overall Score (-100 to +100)
   let realOverallScore = 0;
@@ -230,11 +231,12 @@ export default function LiveMonitor() {
   issues.forEach((item) => {
     if (item.phrase && item.phrase !== "N/A") {
       const kw = item.phrase.toLowerCase();
+      const itemSent = item.keyword_sentiment || item.sentiment_category;
       const existing = realKeywordMap.get(kw);
       if (existing) {
         existing.count += 1;
       } else {
-        realKeywordMap.set(kw, { count: 1, sentiment: item.sentiment_category });
+        realKeywordMap.set(kw, { count: 1, sentiment: itemSent });
       }
     }
   });
@@ -248,8 +250,8 @@ export default function LiveMonitor() {
   // Escalation status boolean based on real data
   const isEscalationNeeded = realOverallScore < -20 || negativeItems.length > 0;
 
-  // Keyword highlighting helper function
-  const renderSentenceWithHighlight = (sentence: string, phrase: string, sentiment: string) => {
+  // Keyword highlighting helper function (uses keyword_sentiment if present, else sentiment_category)
+  const renderSentenceWithHighlight = (sentence: string, phrase: string, itemKeywordSentiment?: string, itemSentenceSentiment?: string) => {
     if (!phrase || phrase === "N/A" || !sentence.toLowerCase().includes(phrase.toLowerCase())) {
       return <span>{sentence}</span>;
     }
@@ -257,10 +259,12 @@ export default function LiveMonitor() {
     const regex = new RegExp(`(${phrase.replace(/[-[\]{}()*+?.:\\^$|#\s]/g, '\\$&')})`, "gi");
     const parts = sentence.split(regex);
 
+    // KEYWORD SENTIMENT HAS PRIORITY FOR WORD COLOR
+    const wordSentiment = itemKeywordSentiment || itemSentenceSentiment || "neutral";
     const highlightClass =
-      sentiment === "negative"
+      wordSentiment === "negative"
         ? "kw-highlight-red"
-        : sentiment === "positive"
+        : wordSentiment === "positive"
         ? "kw-highlight-green"
         : "kw-highlight-grey";
 
@@ -387,7 +391,7 @@ export default function LiveMonitor() {
 
             {/* EMPTY STATE - NO DUMMY DATA */}
             {!transcript && !isLoading && (
-              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyCenter: 'center', padding: '4rem 2rem', textAlign: 'center', color: '#94a3b8', margin: 'auto' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', textAlign: 'center', color: '#94a3b8', margin: 'auto' }}>
                 <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', color: '#cbd5e1' }}>
                   <Broadcast size={28} />
                 </div>
@@ -430,7 +434,12 @@ export default function LiveMonitor() {
                         </span>
                       </div>
                       <div className="chat-bubble bubble-caller">
-                        {renderSentenceWithHighlight(item.isolated_sentence, item.phrase, item.sentiment_category)}
+                        {renderSentenceWithHighlight(
+                          item.isolated_sentence,
+                          item.phrase,
+                          item.keyword_sentiment,
+                          item.sentiment_category
+                        )}
                       </div>
                     </div>
                   </div>
@@ -730,7 +739,7 @@ export default function LiveMonitor() {
                   <span className="on-air-dot"></span>
                   <h2 className="card-title-sm" style={{ color: '#c2410c', margin: 0 }}>AI Alert • Escalation Recommended</h2>
                 </div>
-                <div style={{ fontSize: '1rem', fontWeight: 800, color: '#ea4a16', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
+                <div style={{ fontSize: '1rem', fontStyle: 'normal', fontWeight: 800, color: '#ea4a16', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', marginBottom: '0.25rem' }}>
                   <WarningCircle size={18} />
                   <span>ESCALATE TO MANAGER</span>
                 </div>
