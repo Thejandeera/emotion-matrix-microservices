@@ -177,13 +177,13 @@ export default function EmotionMatrixPage() {
                       <span className={`rest-badge rest-badge-${issue.sentiment_category.toLowerCase()}`}>
                         {issue.sentiment_category}
                       </span>
-                      <span className="rest-emotion-pill">
+                      {/* <span className="rest-emotion-pill">
                         {issue.emotion}
-                      </span>
+                      </span> */}
                     </div>
-                    <p className="rest-confidence">
+                    {/* <p className="rest-confidence">
                       Confidence: {(issue.confidence * 100).toFixed(1)}%
-                    </p>
+                    </p> */}
                   </div>
                 </div>
               ))}

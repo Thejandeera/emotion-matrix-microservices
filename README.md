@@ -42,7 +42,7 @@ python -m venv venv
 ```
 
 2. Install dependencies for each service:
-With the `(venv)` active in your terminal, install the requirements one by one:
+   With the `(venv)` active in your terminal, install the requirements one by one:
 
 ```bash
 pip install -r api-gateway/requirements.txt
@@ -125,16 +125,16 @@ Processes Base64 encoded audio through the entire STT -> NLP -> Emotion pipeline
     {
       "phrase": "wrong item",
       "isolated_sentence": "Hello, I received the wrong item in my order.",
-      "emotion": "disappointment",
-      "sentiment_category": "negative",
-      "confidence": 0.89
+      // "emotion": "disappointment",
+      "sentiment_category": "negative"
+      // "confidence": 0.89
     },
     {
       "phrase": "completely unacceptable",
       "isolated_sentence": "This is completely unacceptable.",
-      "emotion": "anger",
-      "sentiment_category": "negative",
-      "confidence": 0.94
+      // "emotion": "anger",
+      "sentiment_category": "negative"
+      // "confidence": 0.94
     }
   ]
 }
