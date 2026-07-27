@@ -123,16 +123,23 @@ async def process_audio(payload: AudioPayload):
         async def analyze_sentence(item):
             isolated_sentence = item["isolated_sentence"]
             try:
-                sentiment_res = await client.post(SENTIMENT_SERVICE_URL, json={"isolated_sentence": isolated_sentence})
+                # Pass the new metadata to the sentiment service
+                req_payload = {
+                    "isolated_sentence": isolated_sentence,
+                    "keyword_sentiment": item.get("keyword_sentiment", "neutral"),
+                    "keyword_weight": item.get("keyword_weight", 0)
+                }
+                
+                sentiment_res = await client.post(SENTIMENT_SERVICE_URL, json=req_payload)
                 sentiment_res.raise_for_status()
                 sentiment_data = sentiment_res.json()
                 
                 return {
                     "phrase": item["phrase"],
                     "isolated_sentence": isolated_sentence,
-                    # "emotion": sentiment_data["emotion"],
+                    "emotion": sentiment_data["emotion"],
                     "sentiment_category": sentiment_data["sentiment_category"],
-                    # "confidence": sentiment_data["confidence"]
+                    "confidence": sentiment_data["confidence"]
                 }
             except httpx.HTTPError as e:
                 print(f"Warning: Sentiment analysis failed for sentence '{isolated_sentence}': {e}")

@@ -1,42 +1,16 @@
-import os
-import sys
-import warnings
 import torch
 from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import pipeline
 
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
-warnings.filterwarnings("ignore")
-
-# Setup Windows CUDA / cuBLAS / cuDNN DLL directories
-venv_base = sys.prefix
-site_packages_path = os.path.join(venv_base, "Lib", "site-packages")
-cublas_bin = os.path.join(site_packages_path, "nvidia", "cublas", "bin")
-cudnn_bin = os.path.join(site_packages_path, "nvidia", "cudnn", "bin")
-
-if os.path.exists(cublas_bin):
-    os.environ["PATH"] = cublas_bin + os.pathsep + os.environ["PATH"]
-    try:
-        os.add_dll_directory(cublas_bin)
-    except Exception:
-        pass
-
-if os.path.exists(cudnn_bin):
-    os.environ["PATH"] = cudnn_bin + os.pathsep + os.environ["PATH"]
-    try:
-        os.add_dll_directory(cudnn_bin)
-    except Exception:
-        pass
-
 app = FastAPI(title="Sentiment & Emotion Service")
 
 class TextPayload(BaseModel):
     isolated_sentence: str
+    keyword_sentiment: str = "neutral"
+    keyword_weight: float = 0.0
 
 roberta_model = None
-
 
 def categorize_emotion(emotion: str, score: float) -> str:
     positive_emotions = {"admiration", "amusement", "approval", "caring", "desire", "excitement", "gratitude", "joy", "love", "optimism", "pride", "relief"}
@@ -52,10 +26,7 @@ def categorize_emotion(emotion: str, score: float) -> str:
 @app.on_event("startup")
 def load_model():
     global roberta_model
-    print("[Sentiment Service] Loading RoBERTa emotion classifier...")
-    device = 0 if torch.cuda.is_available() else -1
-    roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions", device=device)
-    print(f"[Sentiment Service] Model loaded successfully on device: {device}.")
+    roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
 
 @app.post("/analyze-sentiment")
 async def analyze_sentiment(payload: TextPayload):
@@ -66,11 +37,37 @@ async def analyze_sentiment(payload: TextPayload):
         result = roberta_model(payload.isolated_sentence, truncation=True, max_length=512)[0]
     
     emotion = result["label"]
-    confidence = round(result["score"], 4)
-    sentiment_category = categorize_emotion(emotion, confidence)
+    base_confidence = result["score"]
+    
+    # -----------------------------------------------------
+    # IMPACT WEIGHT ALGORITHM
+    # Converts 0-100 weight into a max 0.40 confidence modifier
+    # -----------------------------------------------------
+    modifier = (payload.keyword_weight / 100.0) * 0.40
+    adjusted_confidence = base_confidence
+    
+    current_category = categorize_emotion(emotion, base_confidence)
+    
+    if payload.keyword_sentiment == "negative":
+        if current_category == "negative":
+            adjusted_confidence = min(1.0, base_confidence + modifier)
+        else:
+            adjusted_confidence = max(0.1, base_confidence - modifier)
+            if adjusted_confidence < 0.4:
+                emotion = "annoyance" 
+                adjusted_confidence = 0.5 + modifier
+                
+    elif payload.keyword_sentiment == "positive":
+        if current_category == "positive":
+            adjusted_confidence = min(1.0, base_confidence + modifier)
+        else:
+            adjusted_confidence = max(0.1, base_confidence - modifier)
+
+    final_confidence = round(adjusted_confidence, 4)
+    final_category = categorize_emotion(emotion, final_confidence)
     
     return {
         "emotion": emotion,
-        "sentiment_category": sentiment_category,
-        "confidence": confidence
+        "sentiment_category": final_category,
+        "confidence": final_confidence
     }
