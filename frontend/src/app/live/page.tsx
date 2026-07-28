@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ChangeEvent } from "react";
+import { useState, ChangeEvent, FormEvent } from "react";
 import "./live.css";
 import {
   Broadcast,
@@ -16,7 +16,9 @@ import {
   UploadSimple,
   Spinner,
   Timer,
-  Cpu
+  Cpu,
+  PaperPlaneRight,
+  Paragraph
 } from "@phosphor-icons/react";
 
 interface DetectedIssue {
@@ -30,7 +32,8 @@ interface DetectedIssue {
 }
 
 export default function LiveMonitor() {
-  // Audio & Gateway Processing State
+  // Text Input & Gateway Processing State
+  const [inputText, setInputText] = useState<string>("");
   const [transcript, setTranscript] = useState<string>("");
   const [issues, setIssues] = useState<DetectedIssue[]>([]);
   const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
@@ -50,7 +53,33 @@ export default function LiveMonitor() {
   // Toast State
   const [toastMessage, setToastMessage] = useState<{ title: string; body: string } | null>(null);
 
-  // Audio File Upload Handler
+  // Send Text payload to Gateway (Direct to Phrase & Sentiment Microservices)
+  const processTextPayload = async (textToProcess: string) => {
+    if (!textToProcess || !textToProcess.trim()) return;
+    setIsLoading(true);
+    setError(null);
+    try {
+      const res = await fetch("http://localhost:8000/api/v1/process-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: textToProcess.trim() }),
+      });
+      const data = await res.json();
+      if (data.status === "success") {
+        setTranscript(data.transcript);
+        setIssues(data.detected_issues || []);
+        setProcessingTimeMs(data.processing_time_ms || 0);
+      } else {
+        setError(data.detail || "Error processing text input");
+      }
+    } catch (err) {
+      setError("Failed to connect to API Gateway at http://localhost:8000");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Audio File Upload Handler (Optional)
   const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
@@ -68,7 +97,7 @@ export default function LiveMonitor() {
     reader.readAsDataURL(selectedFile);
   };
 
-  // Send Base64 payload to Gateway
+  // Send Base64 Audio payload to Gateway (Whisper -> Phrase -> Sentiment)
   const processAudioPayload = async (b64Data: string) => {
     setIsLoading(true);
     setError(null);
@@ -91,6 +120,16 @@ export default function LiveMonitor() {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleFormSubmit = (e: FormEvent) => {
+    e.preventDefault();
+    processTextPayload(inputText);
+  };
+
+  const applyPreset = (presetText: string) => {
+    setInputText(presetText);
+    processTextPayload(presetText);
   };
 
   // Toast Helper
@@ -141,7 +180,7 @@ export default function LiveMonitor() {
     sentiment: data.sentiment,
   }));
 
-  // Keyword highlighting helper function (uses keyword_sentiment if present, else sentiment_category)
+  // Keyword highlighting helper function
   const renderSentenceWithHighlight = (sentence: string, phrase: string, itemKeywordSentiment?: string, itemSentenceSentiment?: string) => {
     if (!phrase || phrase === "N/A" || !sentence.toLowerCase().includes(phrase.toLowerCase())) {
       return <span>{sentence}</span>;
@@ -189,13 +228,13 @@ export default function LiveMonitor() {
             <div className="live-logo-icon">
               <Broadcast size={20} className="animate-pulse" weight="bold" />
             </div>
-            <h1 className="live-title">Live Call Sentiment</h1>
+            <h1 className="live-title">Live Text & Phrase Sentiment Analysis</h1>
           </div>
         </div>
 
         <div className="live-header-right">
-          {/* File Upload Controls */}
-          <label className="btn-upload">
+          {/* Optional Audio File Upload Controls */}
+          <label className="btn-upload" title="Upload Audio File for Speech-to-Text">
             <UploadSimple size={16} style={{ color: '#ff5722' }} />
             <span>Upload Audio</span>
             <input type="file" accept="audio/*" onChange={handleFileChange} style={{ display: 'none' }} />
@@ -205,9 +244,100 @@ export default function LiveMonitor() {
 
       {/* MAIN CONTENT AREA */}
       <main className="live-main-container">
-        {/* ================= LEFT COLUMN: TRANSCRIPT & SEARCH ================= */}
+        {/* ================= LEFT COLUMN: TEXT INPUT, TRANSCRIPT & SEARCH ================= */}
         <div className="left-column-panel" style={{ width: `${leftColWidth}%` }}>
-          {/* Compact Search Bar to avoid overlapping */}
+          
+          {/* DIRECT TEXT INPUT FORM */}
+          <div style={{ backgroundColor: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '1rem', marginBottom: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
+            <form onSubmit={handleFormSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 700, color: '#0f172a' }}>
+                  <Paragraph size={18} style={{ color: '#ff5722' }} />
+                  <span>Analyze Text Input (Direct API Gateway Route)</span>
+                </div>
+                <div style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>
+                  Gateway &rarr; Phrase Service (8002) &rarr; Sentiment Service (8003)
+                </div>
+              </div>
+
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder="Type or paste transcript / text here... (e.g. 'The customer expressed terrible service and requested a refund immediately. Overall experience was unacceptable.')"
+                rows={3}
+                style={{
+                  width: '100%',
+                  borderRadius: '8px',
+                  border: '1px solid #cbd5e1',
+                  padding: '0.75rem',
+                  fontSize: '0.82rem',
+                  fontFamily: 'inherit',
+                  color: '#0f172a',
+                  outline: 'none',
+                  resize: 'vertical'
+                }}
+              />
+
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '0.5rem' }}>
+                {/* Sample Presets */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', flexWrap: 'wrap' }}>
+                  <span style={{ fontSize: '0.7rem', color: '#64748b', fontWeight: 600 }}>Presets:</span>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("The customer expressed terrible service and requested a refund immediately. Overall experience was unacceptable.")}
+                    style={{ fontSize: '0.7rem', fontWeight: 600, padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid #fecaca', backgroundColor: '#fef2f2', color: '#b91c1c', cursor: 'pointer' }}
+                  >
+                    🚨 Complaint
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("Thank you so much for your fast delivery and great support! I really appreciate the help.")}
+                    style={{ fontSize: '0.7rem', fontWeight: 600, padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid #a7f3d0', backgroundColor: '#ecfdf5', color: '#047857', cursor: 'pointer' }}
+                  >
+                    ✨ Positive
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => applyPreset("The product quality is excellent and works great, but the delivery delay was terrible.")}
+                    style={{ fontSize: '0.7rem', fontWeight: 600, padding: '0.25rem 0.5rem', borderRadius: '6px', border: '1px solid #e2e8f0', backgroundColor: '#f8fafc', color: '#334155', cursor: 'pointer' }}
+                  >
+                    ⚖️ Mixed
+                  </button>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isLoading || !inputText.trim()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    backgroundColor: isLoading || !inputText.trim() ? '#94a3b8' : '#ff5722',
+                    color: '#ffffff',
+                    fontWeight: 700,
+                    fontSize: '0.8rem',
+                    padding: '0.45rem 1rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    cursor: isLoading || !inputText.trim() ? 'not-allowed' : 'pointer',
+                    transition: 'background-color 0.15s'
+                  }}
+                >
+                  {isLoading ? (
+                    <>
+                      <Spinner size={16} className="animate-spin" /> Processing...
+                    </>
+                  ) : (
+                    <>
+                      <PaperPlaneRight size={16} weight="bold" /> Analyze Text
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Search Bar */}
           <div className="transcript-search-header">
             <div className="transcript-search-input-wrap">
               <MagnifyingGlass size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
@@ -215,18 +345,18 @@ export default function LiveMonitor() {
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search Transcript..."
+                placeholder="Search Analyzed Sentences..."
                 className="transcript-search-input"
               />
             </div>
             {isLoading && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.75rem', fontWeight: 700, color: '#ff5722' }}>
-                <Spinner size={16} className="animate-spin" /> Processing Pipeline...
+                <Spinner size={16} className="animate-spin" /> Running Pipeline...
               </div>
             )}
           </div>
 
-          {/* Transcript Feed */}
+          {/* Transcript / Text Sentence Feed */}
           <div className="transcript-feed-area">
             {error && (
               <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '0.85rem', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 500 }}>
@@ -237,7 +367,6 @@ export default function LiveMonitor() {
             {/* SKELETON LOADERS DURING PROCESSING */}
             {isLoading && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
-                {/* Skeleton Item 1 */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', width: '100%' }}>
                   <div style={{ width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0 }} className="skeleton-pulse"></div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '70%' }}>
@@ -246,21 +375,11 @@ export default function LiveMonitor() {
                   </div>
                 </div>
 
-                {/* Skeleton Item 2 */}
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', width: '100%', justifyContent: 'flex-start' }}>
                   <div style={{ width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0 }} className="skeleton-pulse"></div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '85%' }}>
                     <div style={{ width: '160px', height: '14px' }} className="skeleton-pulse"></div>
                     <div style={{ width: '100%', height: '56px', borderRadius: '12px' }} className="skeleton-pulse"></div>
-                  </div>
-                </div>
-
-                {/* Skeleton Item 3 */}
-                <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', width: '100%' }}>
-                  <div style={{ width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0 }} className="skeleton-pulse"></div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem', width: '60%' }}>
-                    <div style={{ width: '120px', height: '14px' }} className="skeleton-pulse"></div>
-                    <div style={{ width: '100%', height: '40px', borderRadius: '12px' }} className="skeleton-pulse"></div>
                   </div>
                 </div>
               </div>
@@ -270,16 +389,16 @@ export default function LiveMonitor() {
             {!transcript && !isLoading && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', textAlign: 'center', color: '#94a3b8', margin: 'auto' }}>
                 <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', color: '#cbd5e1' }}>
-                  <Broadcast size={28} />
+                  <Paragraph size={28} />
                 </div>
-                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#475569', marginBottom: '0.35rem' }}>No Transcript Available</h3>
+                <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#475569', marginBottom: '0.35rem' }}>Ready for Text Input</h3>
                 <p style={{ fontSize: '0.75rem', color: '#94a3b8', maxWidth: '340px', lineHeight: 1.5, margin: 0 }}>
-                  Upload an audio file above to perform real-time speech transcription and sentiment analysis.
+                  Enter text or click a sample preset above to perform real-time phrase extraction and emotion analysis.
                 </p>
               </div>
             )}
 
-            {/* REAL TRANSCRIPT SENTENCE FEED WITH DYNAMIC HIGHLIGHTS & CONFIDENCE SCORE */}
+            {/* REAL TEXT SENTENCE FEED WITH DYNAMIC HIGHLIGHTS & CONFIDENCE SCORE */}
             {!isLoading && issues.length > 0 ? (
               filteredIssues.map((item, idx) => {
                 const badgeClass =
@@ -307,7 +426,7 @@ export default function LiveMonitor() {
                     </div>
                     <div className="chat-content-wrap">
                       <div className="chat-msg-header-meta">
-                        <span style={{ fontWeight: 700, color: '#0f172a' }}>Audio Segment #{idx + 1}</span>
+                        <span style={{ fontWeight: 700, color: '#0f172a' }}>Sentence Segment #{idx + 1}</span>
                         <span className={`badge-pill ${badgeClass}`}>
                           {item.sentiment_category.toUpperCase()} - {confidenceDisplay}%
                         </span>
@@ -331,7 +450,7 @@ export default function LiveMonitor() {
                 </div>
                 <div className="chat-content-wrap">
                   <div className="chat-msg-header-meta">
-                    <span style={{ fontWeight: 700, color: '#0f172a' }}>Full Audio Transcript</span>
+                    <span style={{ fontWeight: 700, color: '#0f172a' }}>Input Text</span>
                     <span className="badge-pill badge-pill-neu">NEUTRAL</span>
                   </div>
                   <div className="chat-bubble bubble-caller">
@@ -349,7 +468,7 @@ export default function LiveMonitor() {
                     <div style={{ width: '24px', height: '24px', borderRadius: '6px', backgroundColor: 'rgba(255,87,34,0.2)', border: '1px solid rgba(255,87,34,0.4)', color: '#ff5722', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                       <Sparkle size={14} weight="bold" />
                     </div>
-                    <span style={{ fontWeight: 700 }}>Get Live Call Summary</span>
+                    <span style={{ fontWeight: 700 }}>Get Live Text Summary</span>
                   </div>
                 </button>
 
@@ -359,7 +478,7 @@ export default function LiveMonitor() {
                     {isRefreshingSummary ? (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1.5rem', gap: '0.5rem', color: '#64748b' }}>
                         <Spinner size={20} className="animate-spin" style={{ color: '#ff5722' }} />
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Analyzing conversation transcript...</span>
+                        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Analyzing text transcript...</span>
                       </div>
                     ) : (
                       <>
@@ -387,8 +506,8 @@ export default function LiveMonitor() {
                             </div>
                             <p style={{ margin: 0, color: '#475569', lineHeight: 1.5 }}>
                               {issues.length > 0
-                                ? `Analyzed ${issues.length} audio segments. Key phrase isolated: "${issues[0].phrase !== 'N/A' ? issues[0].phrase : issues[0].isolated_sentence.slice(0, 45) + '...'}"`
-                                : "Audio stream transcribed cleanly without critical support keyphrases."}
+                                ? `Analyzed ${issues.length} text segments. Key phrase isolated: "${issues[0].phrase !== 'N/A' ? issues[0].phrase : issues[0].isolated_sentence.slice(0, 45) + '...'}"`
+                                : "Text processed cleanly without critical support keyphrases."}
                             </p>
                           </div>
 
@@ -406,7 +525,7 @@ export default function LiveMonitor() {
                           <button
                             onClick={() => {
                               navigator.clipboard.writeText(`AI Live Call Summary: ${transcript.slice(0, 150)}...`);
-                              triggerToast("Summary Copied", "Call summary copied to clipboard!");
+                              triggerToast("Summary Copied", "Text summary copied to clipboard!");
                             }}
                             style={{ fontSize: '0.7rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '0.25rem 0.6rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
                           >
@@ -525,8 +644,8 @@ export default function LiveMonitor() {
               </div>
               <p style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', fontWeight: 500, margin: 0, maxWidth: '220px' }}>
                 {issues.length > 0
-                  ? `Calculated from ${issues.length} analyzed audio sentence segments`
-                  : "Waiting for audio input to calculate score"}
+                  ? `Calculated from ${issues.length} analyzed text sentence segments`
+                  : "Waiting for text input to calculate score"}
               </p>
             </div>
 
@@ -587,13 +706,13 @@ export default function LiveMonitor() {
                   })
                 ) : (
                   <span style={{ fontSize: '0.72rem', color: '#94a3b8', fontStyle: 'italic' }}>
-                    {transcript ? "No target keyphrases detected in audio." : "Waiting for audio..."}
+                    {transcript ? "No target keyphrases detected in text." : "Waiting for text..."}
                   </span>
                 )}
               </div>
             </div>
 
-            {/* 3. PIPELINE EXECUTION TIME CARD (BELOW KEYWORD ALERTNESS) */}
+            {/* 3. PIPELINE EXECUTION TIME CARD (DIRECT TEXT PIPELINE) */}
             <div className="scalable-card" style={{ backgroundColor: '#ffffff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -623,21 +742,21 @@ export default function LiveMonitor() {
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem', paddingTop: '0.5rem', borderTop: '1px solid #f1f5f9' }}>
                     <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.4rem 0.5rem', textAlign: 'center' }}>
                       <div style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Whisper STT</div>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#334155', marginTop: '0.1rem' }}>~80%</div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#94a3b8', marginTop: '0.1rem' }}>0% (Bypassed)</div>
                     </div>
                     <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.4rem 0.5rem', textAlign: 'center' }}>
                       <div style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Phrase</div>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#334155', marginTop: '0.1rem' }}>~5%</div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#334155', marginTop: '0.1rem' }}>~25%</div>
                     </div>
                     <div style={{ backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '0.4rem 0.5rem', textAlign: 'center' }}>
                       <div style={{ fontSize: '0.6rem', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>Sentiment</div>
-                      <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#334155', marginTop: '0.1rem' }}>~15%</div>
+                      <div style={{ fontSize: '0.7rem', fontWeight: 800, color: '#334155', marginTop: '0.1rem' }}>~75%</div>
                     </div>
                   </div>
                 </div>
               ) : (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '0.6rem', backgroundColor: '#f8fafc', borderRadius: '8px', border: '1px solid #e2e8f0', color: '#94a3b8', fontSize: '0.72rem', fontStyle: 'italic' }}>
-                  <Cpu size={16} /> Awaiting pipeline execution stats...
+                  <Cpu size={16} /> Awaiting direct text pipeline stats...
                 </div>
               )}
             </div>
