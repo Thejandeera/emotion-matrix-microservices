@@ -6,9 +6,6 @@ echo ===================================================
 REM Start API Gateway (Port 8000)
 start "API Gateway" cmd /k "call venv\Scripts\activate && cd api-gateway && uvicorn main:app --port 8000"
 
-REM Start Whisper Transcription Service (Port 8001)
-start "Whisper Service" cmd /k "call venv\Scripts\activate && cd service-whisper && uvicorn main:app --port 8001"
-
 REM Start Phrase Extraction Service (Port 8002)
 start "Phrase Service" cmd /k "call venv\Scripts\activate && cd service-phrase && uvicorn main:app --port 8002"
 
