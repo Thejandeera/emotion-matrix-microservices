@@ -1,0 +1,7 @@
+### Transcribe Base64 Audio Endpoint (Whisper Service)
+POST http://localhost:8001/transcribe/base64
+Content-Type: application/json
+
+{
+  "audio_data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
+}

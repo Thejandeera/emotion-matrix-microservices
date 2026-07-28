@@ -1,0 +1,28 @@
+### Single Sentiment Analysis Endpoint (Sentiment Service)
+POST http://localhost:8003/analyze-sentiment
+Content-Type: application/json
+
+{
+  "isolated_sentence": "The customer expressed terrible service and requested a refund immediately.",
+  "keyword_sentiment": "negative",
+  "keyword_weight": 80.0
+}
+
+### Batch Sentiment Analysis Endpoint (Sentiment Service)
+POST http://localhost:8003/analyze-sentiment-batch
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "isolated_sentence": "The service was absolutely terrible and I want a full refund.",
+      "keyword_sentiment": "negative",
+      "keyword_weight": 80.0
+    },
+    {
+      "isolated_sentence": "Thank you so much for your quick help and support!",
+      "keyword_sentiment": "positive",
+      "keyword_weight": 90.0
+    }
+  ]
+}

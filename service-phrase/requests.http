@@ -1,0 +1,7 @@
+### Extract Phrases Endpoint (Phrase Service)
+POST http://localhost:8002/extract-phrases
+Content-Type: application/json
+
+{
+  "transcript": "The customer expressed terrible service and requested a refund immediately. Overall experience was unacceptable."
+}
