@@ -139,21 +139,43 @@ export default function LiveMonitor() {
     setTimeout(() => setToastMessage(null), 4000);
   };
 
-  // ================= CALCULATION LOGIC FROM REAL DATA ================= //
-  const negativeItems = issues.filter((i) => (i.keyword_sentiment || i.sentiment_category) === "negative");
-  const positiveItems = issues.filter((i) => (i.keyword_sentiment || i.sentiment_category) === "positive");
+  // ================= STANDARD MATHEMATICAL SENTIMENT SCORE CALCULATION ================= //
+  // Formula:
+  // s_i = +confidence (positive), -confidence (negative), 0 (neutral)
+  // w_i = 1.0 + (keyword_weight / 100) * 0.50
+  // S_raw = Sum(s_i * w_i) / Sum(w_i)
+  // realOverallScore = Math.round(S_raw * 100) => [-100%, +100%]
 
-  // Calculate Real Overall Score (-100 to +100)
+  const negativeItems = issues.filter((i) => i.sentiment_category === "negative");
+  const positiveItems = issues.filter((i) => i.sentiment_category === "positive");
+
   let realOverallScore = 0;
   if (issues.length > 0) {
-    if (negativeItems.length > 0) {
-      const negRatio = negativeItems.length / issues.length;
-      realOverallScore = Math.round(-30 - negRatio * 60);
-    } else if (positiveItems.length > 0) {
-      const posRatio = positiveItems.length / issues.length;
-      realOverallScore = Math.round(30 + posRatio * 60);
-    } else {
-      realOverallScore = 0;
+    let weightedScoreSum = 0;
+    let totalWeightSum = 0;
+
+    issues.forEach((item) => {
+      const category = item.sentiment_category || "neutral";
+      const confidence = typeof item.confidence === "number" ? item.confidence : 0;
+      const kwWeight = typeof item.keyword_weight === "number" ? item.keyword_weight : 0;
+
+      let s_i = 0;
+      if (category === "positive") {
+        s_i = confidence;
+      } else if (category === "negative") {
+        s_i = -confidence;
+      }
+
+      const w_i = 1.0 + (kwWeight / 100.0) * 0.50;
+
+      weightedScoreSum += s_i * w_i;
+      totalWeightSum += w_i;
+    });
+
+    if (totalWeightSum > 0) {
+      const sRaw = weightedScoreSum / totalWeightSum;
+      realOverallScore = Math.round(sRaw * 100);
+      realOverallScore = Math.min(100, Math.max(-100, realOverallScore));
     }
   }
 
@@ -667,7 +689,7 @@ export default function LiveMonitor() {
               </div>
               <p style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', fontWeight: 500, margin: 0, maxWidth: '220px' }}>
                 {issues.length > 0
-                  ? `Calculated from ${issues.length} analyzed text sentence segments`
+                  ? `Standard weighted mathematical average from ${issues.length} analyzed sentence segments`
                   : "Waiting for text input to calculate score"}
               </p>
             </div>
