@@ -128,6 +128,8 @@ async def analyze_text_pipeline(transcript: str, start_time: float, client: http
         batch_outputs = sentiment_res.json().get("results", [])
         
         for item, s_data in zip(items_to_analyze, batch_outputs):
+            if s_data.get("ignore") or s_data.get("sentiment_category") == "ignore":
+                continue
             final_results.append({
                 "phrase": item["phrase"],
                 "phrases": item["phrases"],

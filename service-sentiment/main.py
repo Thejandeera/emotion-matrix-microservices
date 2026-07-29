@@ -39,31 +39,20 @@ def load_model():
     roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
     print("[Sentiment Service] RoBERTa model ready.")
 
-@app.post("/analyze-sentiment")
-async def analyze_sentiment(payload: TextPayload):
-    if not payload.isolated_sentence:
-        return {"emotion": "neutral", "sentiment_category": "neutral", "confidence": 0.0}
-        
-    with torch.inference_mode():
-        result = roberta_model(payload.isolated_sentence, truncation=True, max_length=128)[0]
-    
-    emotion = result["label"]
-    base_confidence = result["score"]
-    
-    modifier = (float(payload.keyword_weight) / 100.0) * 0.40
+def process_sentiment_calculation(emotion: str, base_confidence: float, kw_sentiment: str, kw_weight: float) -> dict:
+    modifier = (float(kw_weight) / 100.0) * 0.40
     adjusted_confidence = base_confidence
     current_category = categorize_emotion(emotion, base_confidence)
-    
-    if payload.keyword_sentiment == "negative":
+
+    if kw_sentiment == "negative":
         if current_category == "negative":
             adjusted_confidence = min(1.0, base_confidence + modifier)
         else:
             adjusted_confidence = max(0.1, base_confidence - modifier)
             if adjusted_confidence < 0.4:
-                emotion = "annoyance" 
+                emotion = "annoyance"
                 adjusted_confidence = 0.5 + modifier
-                
-    elif payload.keyword_sentiment == "positive":
+    elif kw_sentiment == "positive":
         if current_category == "positive":
             adjusted_confidence = min(1.0, base_confidence + modifier)
         else:
@@ -71,12 +60,46 @@ async def analyze_sentiment(payload: TextPayload):
 
     final_confidence = round(adjusted_confidence, 4)
     final_category = categorize_emotion(emotion, final_confidence)
-    
+
+    if final_category == "neutral":
+        if final_confidence > 0.50:
+            final_category = "positive"
+            final_confidence = round(final_confidence - 0.50, 4)
+            return {
+                "emotion": emotion,
+                "sentiment_category": final_category,
+                "confidence": final_confidence,
+                "ignore": False
+            }
+        else:
+            return {
+                "emotion": emotion,
+                "sentiment_category": "ignore",
+                "confidence": final_confidence,
+                "ignore": True
+            }
+
     return {
         "emotion": emotion,
         "sentiment_category": final_category,
-        "confidence": final_confidence
+        "confidence": final_confidence,
+        "ignore": False
     }
+
+@app.post("/analyze-sentiment")
+async def analyze_sentiment(payload: TextPayload):
+    if not payload.isolated_sentence:
+        return {"emotion": "neutral", "sentiment_category": "ignore", "confidence": 0.0, "ignore": True}
+        
+    with torch.inference_mode():
+        result = roberta_model(payload.isolated_sentence, truncation=True, max_length=128)[0]
+    
+    return process_sentiment_calculation(
+        emotion=result["label"],
+        base_confidence=result["score"],
+        kw_sentiment=payload.keyword_sentiment,
+        kw_weight=payload.keyword_weight
+    )
 
 @app.post("/analyze-sentiment-batch")
 async def analyze_sentiment_batch(payload: BatchPayload):
@@ -86,39 +109,16 @@ async def analyze_sentiment_batch(payload: BatchPayload):
     sentences = [item.isolated_sentence for item in payload.items]
     
     with torch.inference_mode():
-        # High-performance PyTorch vectorized batching
         batch_results = roberta_model(sentences, truncation=True, max_length=128, batch_size=32)
 
     output = []
     for item, result in zip(payload.items, batch_results):
-        emotion = result["label"]
-        base_confidence = result["score"]
-
-        modifier = (float(item.keyword_weight) / 100.0) * 0.40
-        adjusted_confidence = base_confidence
-        current_category = categorize_emotion(emotion, base_confidence)
-
-        if item.keyword_sentiment == "negative":
-            if current_category == "negative":
-                adjusted_confidence = min(1.0, base_confidence + modifier)
-            else:
-                adjusted_confidence = max(0.1, base_confidence - modifier)
-                if adjusted_confidence < 0.4:
-                    emotion = "annoyance"
-                    adjusted_confidence = 0.5 + modifier
-        elif item.keyword_sentiment == "positive":
-            if current_category == "positive":
-                adjusted_confidence = min(1.0, base_confidence + modifier)
-            else:
-                adjusted_confidence = max(0.1, base_confidence - modifier)
-
-        final_confidence = round(adjusted_confidence, 4)
-        final_category = categorize_emotion(emotion, final_confidence)
-
-        output.append({
-            "emotion": emotion,
-            "sentiment_category": final_category,
-            "confidence": final_confidence
-        })
+        res = process_sentiment_calculation(
+            emotion=result["label"],
+            base_confidence=result["score"],
+            kw_sentiment=item.keyword_sentiment,
+            kw_weight=item.keyword_weight
+        )
+        output.append(res)
 
     return {"results": output}
