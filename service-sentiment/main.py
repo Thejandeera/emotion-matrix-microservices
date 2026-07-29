@@ -50,7 +50,7 @@ async def analyze_sentiment(payload: TextPayload):
     emotion = result["label"]
     base_confidence = result["score"]
     
-    modifier = (payload.keyword_weight / 100.0) * 0.40
+    modifier = (float(payload.keyword_weight) / 100.0) * 0.40
     adjusted_confidence = base_confidence
     current_category = categorize_emotion(emotion, base_confidence)
     
@@ -94,7 +94,7 @@ async def analyze_sentiment_batch(payload: BatchPayload):
         emotion = result["label"]
         base_confidence = result["score"]
 
-        modifier = (item.keyword_weight / 100.0) * 0.40
+        modifier = (float(item.keyword_weight) / 100.0) * 0.40
         adjusted_confidence = base_confidence
         current_category = categorize_emotion(emotion, base_confidence)
 

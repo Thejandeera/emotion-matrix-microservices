@@ -23,6 +23,7 @@ import {
 
 interface DetectedIssue {
   phrase: string;
+  phrases?: string[];
   isolated_sentence: string;
   keyword_sentiment?: string;
   keyword_weight?: number;
@@ -162,16 +163,22 @@ export default function LiveMonitor() {
   // Extract Real Unique Matched Keywords (exclude "N/A")
   const realKeywordMap = new Map<string, { count: number; sentiment: string }>();
   issues.forEach((item) => {
-    if (item.phrase && item.phrase !== "N/A") {
-      const kw = item.phrase.toLowerCase();
-      const itemSent = item.keyword_sentiment || item.sentiment_category;
-      const existing = realKeywordMap.get(kw);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        realKeywordMap.set(kw, { count: 1, sentiment: itemSent });
+    const rawPhrases = item.phrases && item.phrases.length > 0
+      ? item.phrases
+      : (item.phrase && item.phrase !== "N/A" ? item.phrase.split(",").map(s => s.trim()) : []);
+
+    rawPhrases.forEach((p) => {
+      if (p && p !== "N/A") {
+        const kw = p.toLowerCase();
+        const itemSent = item.keyword_sentiment || item.sentiment_category;
+        const existing = realKeywordMap.get(kw);
+        if (existing) {
+          existing.count += 1;
+        } else {
+          realKeywordMap.set(kw, { count: 1, sentiment: itemSent });
+        }
       }
-    }
+    });
   });
 
   const realKeywords = Array.from(realKeywordMap.entries()).map(([kw, data]) => ({
@@ -181,12 +188,26 @@ export default function LiveMonitor() {
   }));
 
   // Keyword highlighting helper function
-  const renderSentenceWithHighlight = (sentence: string, phrase: string, itemKeywordSentiment?: string, itemSentenceSentiment?: string) => {
-    if (!phrase || phrase === "N/A" || !sentence.toLowerCase().includes(phrase.toLowerCase())) {
+  const renderSentenceWithHighlight = (
+    sentence: string,
+    phrase: string,
+    phrases?: string[],
+    itemKeywordSentiment?: string,
+    itemSentenceSentiment?: string
+  ) => {
+    const targetPhrases = phrases && phrases.length > 0
+      ? phrases.filter(p => p && p !== "N/A")
+      : (phrase && phrase !== "N/A" ? phrase.split(",").map(s => s.trim()).filter(Boolean) : []);
+
+    if (targetPhrases.length === 0) {
       return <span>{sentence}</span>;
     }
 
-    const regex = new RegExp(`(${phrase.replace(/[-[\]{}()*+?.:\\^$|#\s]/g, '\\$&')})`, "gi");
+    const sortedPhrases = [...targetPhrases].sort((a, b) => b.length - a.length);
+    const pattern = sortedPhrases.map(p => p.replace(/[-[\]{}()*+?.:\\^$|#\s]/g, '\\$&')).join('|');
+    if (!pattern) return <span>{sentence}</span>;
+
+    const regex = new RegExp(`(${pattern})`, "gi");
     const parts = sentence.split(regex);
 
     const wordSentiment = itemKeywordSentiment || itemSentenceSentiment || "neutral";
@@ -199,15 +220,16 @@ export default function LiveMonitor() {
 
     return (
       <span>
-        {parts.map((part, idx) =>
-          part.toLowerCase() === phrase.toLowerCase() ? (
+        {parts.map((part, idx) => {
+          const isMatch = sortedPhrases.some(p => p.toLowerCase() === part.toLowerCase());
+          return isMatch ? (
             <span key={idx} className={highlightClass}>
               {part}
             </span>
           ) : (
             <span key={idx}>{part}</span>
-          )
-        )}
+          );
+        })}
       </span>
     );
   };
@@ -435,6 +457,7 @@ export default function LiveMonitor() {
                         {renderSentenceWithHighlight(
                           item.isolated_sentence,
                           item.phrase,
+                          item.phrases,
                           item.keyword_sentiment,
                           item.sentiment_category
                         )}
@@ -685,7 +708,12 @@ export default function LiveMonitor() {
                       <button
                         key={i}
                         onClick={() => {
-                          const idx = issues.findIndex((iss) => iss.phrase.toLowerCase() === item.keyword);
+                          const idx = issues.findIndex((iss) => {
+                            const pList = iss.phrases && iss.phrases.length > 0
+                              ? iss.phrases
+                              : (iss.phrase ? iss.phrase.split(",").map(s => s.trim()) : []);
+                            return pList.some(p => p.toLowerCase() === item.keyword.toLowerCase());
+                          });
                           if (idx !== -1) {
                             setHighlightedIndex(idx);
                             const elem = document.getElementById(`sentence-${idx}`);

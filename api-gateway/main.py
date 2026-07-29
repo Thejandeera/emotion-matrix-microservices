@@ -73,27 +73,39 @@ async def analyze_text_pipeline(transcript: str, start_time: float, client: http
     if not sentences:
         sentences = [transcript]
 
-    phrase_map = {}
+    sentence_matches_map = {}
     for m in matches:
         sent_key = m.get("isolated_sentence", "").strip()
         if sent_key:
-            phrase_map[sent_key] = m
+            if sent_key not in sentence_matches_map:
+                sentence_matches_map[sent_key] = []
+            sentence_matches_map[sent_key].append(m)
 
     items_to_analyze = []
     for sent in sentences:
-        m_info = phrase_map.get(sent)
-        if not m_info:
-            for k, v in phrase_map.items():
+        s_matches = sentence_matches_map.get(sent, [])
+        if not s_matches:
+            for k, v_list in sentence_matches_map.items():
                 if k in sent or sent in k:
-                    m_info = v
+                    s_matches = v_list
                     break
         
-        matched_phrase = m_info.get("phrase", "N/A") if m_info else "N/A"
-        kw_sent = m_info.get("keyword_sentiment", "neutral") if m_info else "neutral"
-        kw_weight = m_info.get("keyword_weight", 0) if m_info else 0
+        phrases_list = [m["phrase"] for m in s_matches if m.get("phrase")] if s_matches else []
+        matched_phrase_str = ", ".join(phrases_list) if phrases_list else "N/A"
+        
+        kw_sent = "neutral"
+        kw_weight = 0.0
+        if s_matches:
+            if any(m.get("keyword_sentiment") == "negative" for m in s_matches):
+                kw_sent = "negative"
+            elif any(m.get("keyword_sentiment") == "positive" for m in s_matches):
+                kw_sent = "positive"
+            
+            kw_weight = max(m.get("keyword_weight", 0.0) for m in s_matches)
         
         items_to_analyze.append({
-            "phrase": matched_phrase,
+            "phrase": matched_phrase_str,
+            "phrases": phrases_list,
             "isolated_sentence": sent,
             "keyword_sentiment": kw_sent,
             "keyword_weight": kw_weight
@@ -118,6 +130,7 @@ async def analyze_text_pipeline(transcript: str, start_time: float, client: http
         for item, s_data in zip(items_to_analyze, batch_outputs):
             final_results.append({
                 "phrase": item["phrase"],
+                "phrases": item["phrases"],
                 "isolated_sentence": item["isolated_sentence"],
                 "keyword_sentiment": item["keyword_sentiment"],
                 "keyword_weight": item["keyword_weight"],
@@ -130,6 +143,7 @@ async def analyze_text_pipeline(transcript: str, start_time: float, client: http
         for item in items_to_analyze:
             final_results.append({
                 "phrase": item["phrase"],
+                "phrases": item["phrases"],
                 "isolated_sentence": item["isolated_sentence"],
                 "keyword_sentiment": item["keyword_sentiment"],
                 "keyword_weight": item["keyword_weight"],

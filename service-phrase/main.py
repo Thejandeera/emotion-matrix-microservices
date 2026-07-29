@@ -51,21 +51,17 @@ async def extract_phrases(payload: TextPayload):
     matches = matcher(doc)
     
     results = []
-    analyzed_sentences = set()
-    
     for match_id, start, end in matches:
         matched_span = doc[start:end]
         isolated_sentence = matched_span.sent.text.strip()
         kw_text = matched_span.text.lower()
         
-        if isolated_sentence not in analyzed_sentences:
-            kw_info = keyword_db.get(kw_text, {"sentiment": "neutral", "weight": 0})
-            results.append({
-                "phrase": matched_span.text,
-                "isolated_sentence": isolated_sentence,
-                "keyword_sentiment": kw_info["sentiment"],
-                "keyword_weight": kw_info["weight"]
-            })
-            analyzed_sentences.add(isolated_sentence)
+        kw_info = keyword_db.get(kw_text, {"sentiment": "neutral", "weight": 0})
+        results.append({
+            "phrase": matched_span.text,
+            "isolated_sentence": isolated_sentence,
+            "keyword_sentiment": kw_info["sentiment"],
+            "keyword_weight": kw_info["weight"]
+        })
             
     return {"matches": results}
