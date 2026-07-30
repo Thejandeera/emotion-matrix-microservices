@@ -35,6 +35,9 @@ class TextPayload(BaseModel):
     text: str
     session_id: str = "default"
 
+class ResetSessionPayload(BaseModel):
+    session_id: str = "default"
+
 WHISPER_SERVICE_URL = "http://localhost:8001/transcribe/base64"
 PHRASE_SERVICE_URL = "http://localhost:8002/extract-phrases"
 SENTIMENT_SERVICE_URL = "http://localhost:8003/analyze-sentiment"
@@ -71,6 +74,7 @@ async def analyze_message_sliding_window(incoming_text: str, session_id: str, st
             "emotion": "neutral",
             "sentiment_category": "neutral",
             "confidence": 0.0,
+            "overall_score": 0,
             "window_messages": [],
             "dropped_message": None,
             "combined_context": ""
@@ -80,7 +84,7 @@ async def analyze_message_sliding_window(incoming_text: str, session_id: str, st
     print(f"\n[Gateway] === Processing New Message (Session: '{session_id}') ===")
     print(f"[Gateway] Incoming Message: '{raw_sentence}'")
 
-    # 1. Keyword / Phrase extraction on the current incoming message
+    # 1. Keyword / Phrase extraction on current message
     detected_phrase = "N/A"
     phrases_list = []
     kw_sentiment = "neutral"
@@ -110,13 +114,24 @@ async def analyze_message_sliding_window(incoming_text: str, session_id: str, st
     current_window = await redis_client.lrange(redis_key, 0, -1)
     print(f"[Gateway] Updated Redis Sliding Window (size={len(current_window)}): {current_window}")
 
-    # 3. Sentiment Analysis on Combined Window Input
+    # 3. Retrieve Session Sentiment History for Backend Score Calculation
+    history_key = f"session_history:{session_id}"
+    raw_history = await redis_client.lrange(history_key, 0, -1)
+    history_items = []
+    for item_str in raw_history:
+        try:
+            history_items.append(json.loads(item_str))
+        except Exception:
+            pass
+
+    # 4. Sentiment Analysis on Combined Window Input
     combined_context = " ".join(current_window)
     print(f"[Gateway] Combined Sliding Window Text for Sentiment: '{combined_context}'")
 
     emotion = "neutral"
     sentiment_category = "neutral"
     confidence = 0.0
+    overall_score = 0
 
     try:
         sentiment_res = await client.post(
@@ -124,7 +139,8 @@ async def analyze_message_sliding_window(incoming_text: str, session_id: str, st
             json={
                 "isolated_sentence": combined_context,
                 "keyword_sentiment": kw_sentiment,
-                "keyword_weight": kw_weight
+                "keyword_weight": kw_weight,
+                "history": history_items
             }
         )
         sentiment_res.raise_for_status()
@@ -132,9 +148,14 @@ async def analyze_message_sliding_window(incoming_text: str, session_id: str, st
         emotion = s_data.get("emotion", "neutral")
         sentiment_category = s_data.get("sentiment_category", "neutral")
         confidence = float(s_data.get("confidence", 0.0))
-        print(f"[Gateway] Sentiment Service Result -> Category: '{sentiment_category}' | Emotion: '{emotion}' | Conf: {confidence}")
+        overall_score = int(s_data.get("overall_score", 0))
+        print(f"[Gateway] Sentiment Service Result -> Category: '{sentiment_category}' | Emotion: '{emotion}' | Conf: {confidence} | Overall Score: {overall_score}%")
     except Exception as e:
         print(f"[Gateway Error] Sentiment Service call failed: {e}")
+
+    # Store new sentiment result into Redis session history
+    current_sent_item = json.dumps({"sentiment_category": sentiment_category, "keyword_sentiment": kw_sentiment})
+    await redis_client.rpush(history_key, current_sent_item)
 
     end_time = time.perf_counter()
     processing_time_ms = round((end_time - start_time) * 1000, 2)
@@ -150,6 +171,7 @@ async def analyze_message_sliding_window(incoming_text: str, session_id: str, st
         "emotion": emotion,
         "sentiment_category": sentiment_category,
         "confidence": confidence,
+        "overall_score": overall_score,
         "window_messages": current_window,
         "dropped_message": dropped_msg,
         "combined_context": combined_context,
@@ -168,18 +190,17 @@ async def process_text(payload: TextPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Gateway Error: {str(e)}")
 
-class ResetSessionPayload(BaseModel):
-    session_id: str = "default"
-
 @app.post("/api/v1/reset-session")
 async def reset_session(payload: ResetSessionPayload = ResetSessionPayload()):
     try:
         target_session = payload.session_id if payload and payload.session_id else "default"
-        redis_key = f"session_window:{target_session}"
-        await redis_client.delete(redis_key)
+        await redis_client.delete(f"session_window:{target_session}")
+        await redis_client.delete(f"session_history:{target_session}")
         await redis_client.delete("session_window:default")
+        await redis_client.delete("session_history:default")
         await redis_client.delete("session_window:live_session")
-        print(f"[Gateway] Cleared Redis sliding window sessions ('{target_session}', 'default', 'live_session')")
+        await redis_client.delete("session_history:live_session")
+        print(f"[Gateway] Cleared Redis session windows & sentiment history for '{target_session}'")
         return {"status": "success", "message": f"Session '{target_session}' cleared."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reset session: {str(e)}")

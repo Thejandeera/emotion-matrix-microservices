@@ -321,10 +321,13 @@
 .chat-msg-agent {
   flex-direction: row-reverse;
   align-self: flex-end;
+  margin-left: auto;
 }
 
 .chat-msg-caller {
+  flex-direction: row;
   align-self: flex-start;
+  margin-right: auto;
 }
 
 .chat-avatar {

@@ -1,15 +1,20 @@
 import torch
-from typing import List
+from typing import List, Dict, Any
 from fastapi import FastAPI
 from pydantic import BaseModel
 from transformers import pipeline
 
 app = FastAPI(title="Sentiment & Emotion Service")
 
+class HistoryItem(BaseModel):
+    sentiment_category: str = "neutral"
+    keyword_sentiment: str = "neutral"
+
 class TextPayload(BaseModel):
     isolated_sentence: str
     keyword_sentiment: str = "neutral"
     keyword_weight: float = 0.0
+    history: List[HistoryItem] = []
 
 class BatchItem(BaseModel):
     isolated_sentence: str
@@ -32,6 +37,30 @@ def categorize_emotion(emotion: str, score: float) -> str:
     else:
         return "positive" if emotion == "surprise" and score >= 0.80 else "neutral"
 
+def calculate_overall_score(history: List[HistoryItem], current_category: str, current_kw_sentiment: str) -> int:
+    all_items = [
+        {"sentiment_category": item.sentiment_category, "keyword_sentiment": item.keyword_sentiment}
+        for item in history
+    ]
+    all_items.append({"sentiment_category": current_category, "keyword_sentiment": current_kw_sentiment})
+
+    negative_count = sum(1 for i in all_items if i.get("keyword_sentiment") == "negative" or i.get("sentiment_category") == "negative")
+    positive_count = sum(1 for i in all_items if i.get("keyword_sentiment") == "positive" or i.get("sentiment_category") == "positive")
+    total_count = len(all_items)
+
+    if total_count == 0:
+        return 0
+
+    if negative_count > 0:
+        neg_ratio = negative_count / total_count
+        score = round(-30 - neg_ratio * 60)
+    elif positive_count > 0:
+        pos_ratio = positive_count / total_count
+        score = round(30 + pos_ratio * 60)
+    else:
+        score = 0
+    return max(-100, min(100, score))
+
 @app.on_event("startup")
 def load_model():
     global roberta_model
@@ -42,7 +71,12 @@ def load_model():
 @app.post("/analyze-sentiment")
 async def analyze_sentiment(payload: TextPayload):
     if not payload.isolated_sentence or not payload.isolated_sentence.strip():
-        return {"emotion": "neutral", "sentiment_category": "neutral", "confidence": 0.0}
+        return {
+            "emotion": "neutral",
+            "sentiment_category": "neutral",
+            "confidence": 0.0,
+            "overall_score": 0
+        }
         
     print(f"[Sentiment Service] Input context: '{payload.isolated_sentence}' | KW Sent: '{payload.keyword_sentiment}' | KW Weight: {payload.keyword_weight}")
 
@@ -73,13 +107,17 @@ async def analyze_sentiment(payload: TextPayload):
 
     final_confidence = round(adjusted_confidence, 4)
     final_category = categorize_emotion(emotion, final_confidence)
+
+    # Compute overall score in backend
+    overall_score = calculate_overall_score(payload.history, final_category, payload.keyword_sentiment)
     
-    print(f"[Sentiment Service] Model raw: label='{result['label']}' score={result['score']:.4f} -> Final category='{final_category}' confidence={final_confidence}")
+    print(f"[Sentiment Service] Model raw: label='{result['label']}' score={result['score']:.4f} -> Category='{final_category}' conf={final_confidence} | Overall Score={overall_score}%")
 
     return {
         "emotion": emotion,
         "sentiment_category": final_category,
-        "confidence": final_confidence
+        "confidence": final_confidence,
+        "overall_score": overall_score
     }
 
 @app.post("/analyze-sentiment-batch")
@@ -90,7 +128,6 @@ async def analyze_sentiment_batch(payload: BatchPayload):
     sentences = [item.isolated_sentence for item in payload.items]
     
     with torch.inference_mode():
-        # High-performance PyTorch vectorized batching
         batch_results = roberta_model(sentences, truncation=True, max_length=128, batch_size=32)
 
     output = []

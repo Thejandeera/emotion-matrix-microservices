@@ -16,6 +16,7 @@ interface DetectedIssue {
   emotion: string;
   sentiment_category: string;
   confidence: number;
+  overall_score?: number;
   window_messages?: string[];
   dropped_message?: string | null;
   combined_context?: string;
@@ -34,8 +35,9 @@ export default function LiveMonitor() {
   const [currentRole, setCurrentRole] = useState<"Agent" | "Caller">("Caller");
   const chatEndRef = useRef<HTMLDivElement>(null);
 
-  // Gateway Processing State
+  // Gateway & Backend Processing State
   const [issues, setIssues] = useState<DetectedIssue[]>([]);
+  const [overallScore, setOverallScore] = useState<number>(0);
   const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -49,8 +51,10 @@ export default function LiveMonitor() {
     try {
       const savedHistory = sessionStorage.getItem("chat_history");
       const savedIssues = sessionStorage.getItem("detected_issues");
+      const savedScore = sessionStorage.getItem("overall_score");
       if (savedHistory) setChatHistory(JSON.parse(savedHistory));
       if (savedIssues) setIssues(JSON.parse(savedIssues));
+      if (savedScore) setOverallScore(parseInt(savedScore, 10));
     } catch (e) {
       console.error("Error loading sessionStorage:", e);
     }
@@ -73,7 +77,7 @@ export default function LiveMonitor() {
 
     setChatHistory(updatedHistory);
     setCurrentInput("");
-    // Automatically toggle role for rapid testing
+    // Toggle role automatically for faster testing
     setCurrentRole(currentRole === "Agent" ? "Caller" : "Agent");
 
     setIsLoading(true);
@@ -87,6 +91,9 @@ export default function LiveMonitor() {
       });
       const data = await res.json();
       if (data.status === "success") {
+        const backendScore = typeof data.overall_score === "number" ? data.overall_score : 0;
+        setOverallScore(backendScore);
+
         const newIssue: DetectedIssue = {
           sentence: data.sentence || inputMsg,
           phrase: data.phrase || "N/A",
@@ -96,6 +103,7 @@ export default function LiveMonitor() {
           emotion: data.emotion || "neutral",
           sentiment_category: data.sentiment_category || "neutral",
           confidence: data.confidence || 0,
+          overall_score: backendScore,
           window_messages: data.window_messages || [],
           dropped_message: data.dropped_message || null,
           combined_context: data.combined_context || "",
@@ -109,6 +117,7 @@ export default function LiveMonitor() {
         // Save into sessionStorage
         sessionStorage.setItem("chat_history", JSON.stringify(updatedHistory));
         sessionStorage.setItem("detected_issues", JSON.stringify(updatedIssues));
+        sessionStorage.setItem("overall_score", String(backendScore));
       } else {
         setError(data.detail || "Error processing text input");
       }
@@ -132,6 +141,7 @@ export default function LiveMonitor() {
 
     setChatHistory([]);
     setIssues([]);
+    setOverallScore(0);
     setProcessingTimeMs(null);
     setError(null);
     setCurrentInput("");
@@ -141,25 +151,8 @@ export default function LiveMonitor() {
     }
   };
 
-  // ================= CALCULATION LOGIC FROM REAL DATA ================= //
-  const negativeItems = issues.filter((i) => (i.keyword_sentiment || i.sentiment_category) === "negative");
-  const positiveItems = issues.filter((i) => (i.keyword_sentiment || i.sentiment_category) === "positive");
-
-  // Calculate Real Overall Score (-100 to +100)
-  let realOverallScore = 0;
-  if (issues.length > 0) {
-    if (negativeItems.length > 0) {
-      const negRatio = negativeItems.length / issues.length;
-      realOverallScore = Math.round(-30 - negRatio * 60);
-    } else if (positiveItems.length > 0) {
-      const posRatio = positiveItems.length / issues.length;
-      realOverallScore = Math.round(30 + posRatio * 60);
-    } else {
-      realOverallScore = 0;
-    }
-  }
-
-  const pointerLeftPercent = Math.min(95, Math.max(5, ((realOverallScore + 100) / 200) * 100));
+  // Position on gauge track based directly on backend overallScore
+  const pointerLeftPercent = Math.min(95, Math.max(5, ((overallScore + 100) / 200) * 100));
 
   const renderSentenceWithHighlight = (
     sentence: string, phrase: string, phrases?: string[], itemKeywordSentiment?: string, itemSentenceSentiment?: string
@@ -279,11 +272,11 @@ export default function LiveMonitor() {
               const confidenceDisplay = (item.confidence * 100).toFixed(0);
 
               return (
-                <div key={idx} className="chat-msg-row chat-msg-caller" style={{ marginBottom: '1.25rem' }}>
-                  <div className="chat-avatar avatar-caller" style={{ backgroundColor: isAgent ? '#e0f2fe' : '#f3e8ff', color: isAgent ? '#0284c7' : '#9333ea' }}>
+                <div key={idx} className={`chat-msg-row ${isAgent ? "chat-msg-agent" : "chat-msg-caller"}`} style={{ marginBottom: '1.25rem' }}>
+                  <div className={`chat-avatar ${isAgent ? "avatar-agent" : "avatar-caller"}`}>
                     <User size={16} />
                   </div>
-                  <div className="chat-content-wrap" style={{ width: '100%' }}>
+                  <div className="chat-content-wrap">
                     <div className="chat-msg-header-meta" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.35rem' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                         <span style={{ fontWeight: 700, color: '#0f172a', fontSize: '0.8rem' }}>{item.role} Segment #{idx + 1}</span>
@@ -298,7 +291,7 @@ export default function LiveMonitor() {
                       </span>
                     </div>
 
-                    <div className="chat-bubble bubble-caller" style={{ backgroundColor: isAgent ? '#f0f9ff' : '#faf5ff', border: isAgent ? '1px solid #bae6fd' : '1px solid #e9d5ff' }}>
+                    <div className={`chat-bubble ${isAgent ? "bubble-agent" : "bubble-caller"}`}>
                       {renderSentenceWithHighlight(
                         item.sentence,
                         item.phrase, item.phrases, item.keyword_sentiment, item.sentiment_category
@@ -386,10 +379,10 @@ export default function LiveMonitor() {
               <h2 className="card-title-sm" style={{ marginBottom: '1.25rem', textAlign: 'center', width: '100%' }}>Weighted Sentiment Score</h2>
               <div style={{ width: '100%', position: 'relative', padding: '0 0.5rem', marginBottom: '0.75rem' }}>
                 <div className="gauge-gradient-track"></div>
-                <div className="gauge-pointer" style={{ left: `${pointerLeftPercent}%`, borderColor: realOverallScore < 0 ? '#dc2626' : realOverallScore > 0 ? '#10b981' : '#64748b' }}></div>
+                <div className="gauge-pointer" style={{ left: `${pointerLeftPercent}%`, borderColor: overallScore < 0 ? '#dc2626' : overallScore > 0 ? '#10b981' : '#64748b' }}></div>
               </div>
-              <div className="big-score-display" style={{ color: realOverallScore < 0 ? '#dc2626' : realOverallScore > 0 ? '#059669' : '#475569' }}>
-                {realOverallScore > 0 ? `+${realOverallScore}%` : `${realOverallScore}%`}
+              <div className="big-score-display" style={{ color: overallScore < 0 ? '#dc2626' : overallScore > 0 ? '#059669' : '#475569' }}>
+                {overallScore > 0 ? `+${overallScore}%` : `${overallScore}%`}
               </div>
             </div>
 
