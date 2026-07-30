@@ -1,22 +1,39 @@
-### 1. API Gateway - Direct Text Analysis (Port 8000)
+### 1. API Gateway - Process Text Message (Sliding Window Pipeline - Port 8000)
 POST http://localhost:8000/api/v1/process-text
 Content-Type: application/json
 
 {
-  "text": "Hello, this is Michael from ABC Support. I just wanted to follow up and see if everything has been good since your purchase. If there's anything we can assist you with, we're happy to help. Should you need a refund, we'll guide you through every step. We never refund take your trust for granted. Thank you for being our valued customer."
+  "text": "Hello, good morning.",
+  "session_id": "live_session"
 }
 
+### 2. API Gateway - Process Second Message (Appends to Redis Window)
+POST http://localhost:8000/api/v1/process-text
+Content-Type: application/json
 
-### 2. API Gateway - Audio Processing (Port 8000)
+{
+  "text": "Thank you for calling ABC Customer Support. How can I help you today?",
+  "session_id": "live_session"
+}
+
+### 3. API Gateway - Reset Redis Sliding Window & History
+POST http://localhost:8000/api/v1/reset-session
+Content-Type: application/json
+
+{
+  "session_id": "live_session"
+}
+
+### 4. API Gateway - Audio Processing (Port 8000)
 POST http://localhost:8000/api/v1/process-audio
 Content-Type: application/json
 
 {
-  "audio_data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
+  "audio_data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=",
+  "session_id": "live_session"
 }
 
-
-### 3. Whisper Speech-to-Text Service (Port 8001)
+### 5. Whisper Speech-to-Text Service (Port 8001)
 POST http://localhost:8001/transcribe/base64
 Content-Type: application/json
 
@@ -24,28 +41,31 @@ Content-Type: application/json
   "audio_data": "UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA="
 }
 
-
-### 4. Phrase Extraction Service (Port 8002)
+### 6. Phrase Extraction Service - Direct (Port 8002)
 POST http://localhost:8002/extract-phrases
 Content-Type: application/json
 
 {
-  "transcript": "Hello, this is Michael from ABC Support. Should you need a refund, we'll guide you through every step. We never refund take your trust for granted."
+  "transcript": "I need to cancel my account immediately due to billing issues."
 }
 
-
-### 5. Sentiment & Emotion Analysis Service - Single (Port 8003)
+### 7. Sentiment & Emotion Service - Single with History (Port 8003)
 POST http://localhost:8003/analyze-sentiment
 Content-Type: application/json
 
 {
-  "isolated_sentence": "Should you need a refund, we'll guide you through every step.",
+  "isolated_sentence": "Hello good morning. I need to cancel my account immediately.",
   "keyword_sentiment": "negative",
-  "keyword_weight": 80.0
+  "keyword_weight": 85.0,
+  "history": [
+    {
+      "sentiment_category": "positive",
+      "keyword_sentiment": "positive"
+    }
+  ]
 }
 
-
-### 6. Sentiment & Emotion Analysis Service - Batch (Port 8003)
+### 8. Sentiment & Emotion Service - Batch Analysis (Port 8003)
 POST http://localhost:8003/analyze-sentiment-batch
 Content-Type: application/json
 
