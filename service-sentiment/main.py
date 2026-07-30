@@ -88,18 +88,23 @@ def process_sentiment_calculation(emotion: str, base_confidence: float, kw_senti
 
 @app.post("/analyze-sentiment")
 async def analyze_sentiment(payload: TextPayload):
-    if not payload.isolated_sentence:
+    if not payload.isolated_sentence or not payload.isolated_sentence.strip():
         return {"emotion": "neutral", "sentiment_category": "ignore", "confidence": 0.0, "ignore": True}
         
+    print(f"[Sentiment Service] Input context: '{payload.isolated_sentence}' | KW Sent: '{payload.keyword_sentiment}' | KW Weight: {payload.keyword_weight}")
+
     with torch.inference_mode():
-        result = roberta_model(payload.isolated_sentence, truncation=True, max_length=128)[0]
+        result = roberta_model(payload.isolated_sentence, truncation=True, max_length=256)[0]
     
-    return process_sentiment_calculation(
+    res = process_sentiment_calculation(
         emotion=result["label"],
         base_confidence=result["score"],
         kw_sentiment=payload.keyword_sentiment,
         kw_weight=payload.keyword_weight
     )
+    
+    print(f"[Sentiment Service] Model raw: label='{result['label']}' score={result['score']:.4f} -> Final category='{res['sentiment_category']}' confidence={res['confidence']}")
+    return res
 
 @app.post("/analyze-sentiment-batch")
 async def analyze_sentiment_batch(payload: BatchPayload):
