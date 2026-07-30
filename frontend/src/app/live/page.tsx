@@ -133,34 +133,29 @@ export default function LiveMonitor() {
     setChatHistory([]);
     setIssues([]);
     setProcessingTimeMs(null);
-    sessionStorage.removeItem("chat_history");
-    sessionStorage.removeItem("detected_issues");
+    setError(null);
+    setCurrentInput("");
+    
+    if (typeof window !== "undefined") {
+      sessionStorage.clear();
+    }
   };
 
-  // --- Overall Weighted Score Calculation ---
+  // ================= CALCULATION LOGIC FROM REAL DATA ================= //
+  const negativeItems = issues.filter((i) => (i.keyword_sentiment || i.sentiment_category) === "negative");
+  const positiveItems = issues.filter((i) => (i.keyword_sentiment || i.sentiment_category) === "positive");
+
+  // Calculate Real Overall Score (-100 to +100)
   let realOverallScore = 0;
   if (issues.length > 0) {
-    let weightedScoreSum = 0;
-    let totalWeightSum = 0;
-
-    issues.forEach((item) => {
-      const category = item.sentiment_category || "neutral";
-      const confidence = typeof item.confidence === "number" ? item.confidence : 0;
-      const kwWeight = typeof item.keyword_weight === "number" ? item.keyword_weight : 0;
-
-      let s_i = 0;
-      if (category === "positive") s_i = confidence;
-      else if (category === "negative") s_i = -confidence;
-
-      const w_i = 1.0 + (kwWeight / 100.0) * 0.50;
-      weightedScoreSum += s_i * w_i;
-      totalWeightSum += w_i;
-    });
-
-    if (totalWeightSum > 0) {
-      const sRaw = weightedScoreSum / totalWeightSum;
-      realOverallScore = Math.round(sRaw * 100);
-      realOverallScore = Math.min(100, Math.max(-100, realOverallScore));
+    if (negativeItems.length > 0) {
+      const negRatio = negativeItems.length / issues.length;
+      realOverallScore = Math.round(-30 - negRatio * 60);
+    } else if (positiveItems.length > 0) {
+      const posRatio = positiveItems.length / issues.length;
+      realOverallScore = Math.round(30 + posRatio * 60);
+    } else {
+      realOverallScore = 0;
     }
   }
 

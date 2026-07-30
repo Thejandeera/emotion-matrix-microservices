@@ -39,20 +39,33 @@ def load_model():
     roberta_model = pipeline("text-classification", model="SamLowe/roberta-base-go_emotions")
     print("[Sentiment Service] RoBERTa model ready.")
 
-def process_sentiment_calculation(emotion: str, base_confidence: float, kw_sentiment: str, kw_weight: float) -> dict:
-    modifier = (float(kw_weight) / 100.0) * 0.40
+@app.post("/analyze-sentiment")
+async def analyze_sentiment(payload: TextPayload):
+    if not payload.isolated_sentence or not payload.isolated_sentence.strip():
+        return {"emotion": "neutral", "sentiment_category": "neutral", "confidence": 0.0}
+        
+    print(f"[Sentiment Service] Input context: '{payload.isolated_sentence}' | KW Sent: '{payload.keyword_sentiment}' | KW Weight: {payload.keyword_weight}")
+
+    with torch.inference_mode():
+        result = roberta_model(payload.isolated_sentence, truncation=True, max_length=256)[0]
+    
+    emotion = result["label"]
+    base_confidence = result["score"]
+    
+    modifier = (payload.keyword_weight / 100.0) * 0.40
     adjusted_confidence = base_confidence
     current_category = categorize_emotion(emotion, base_confidence)
-
-    if kw_sentiment == "negative":
+    
+    if payload.keyword_sentiment == "negative":
         if current_category == "negative":
             adjusted_confidence = min(1.0, base_confidence + modifier)
         else:
             adjusted_confidence = max(0.1, base_confidence - modifier)
             if adjusted_confidence < 0.4:
-                emotion = "annoyance"
+                emotion = "annoyance" 
                 adjusted_confidence = 0.5 + modifier
-    elif kw_sentiment == "positive":
+                
+    elif payload.keyword_sentiment == "positive":
         if current_category == "positive":
             adjusted_confidence = min(1.0, base_confidence + modifier)
         else:
@@ -60,51 +73,14 @@ def process_sentiment_calculation(emotion: str, base_confidence: float, kw_senti
 
     final_confidence = round(adjusted_confidence, 4)
     final_category = categorize_emotion(emotion, final_confidence)
-
-    if final_category == "neutral":
-        if final_confidence > 0.50:
-            final_category = "positive"
-            final_confidence = round(final_confidence - 0.50, 4)
-            return {
-                "emotion": emotion,
-                "sentiment_category": final_category,
-                "confidence": final_confidence,
-                "ignore": False
-            }
-        else:
-            return {
-                "emotion": emotion,
-                "sentiment_category": "ignore",
-                "confidence": final_confidence,
-                "ignore": True
-            }
+    
+    print(f"[Sentiment Service] Model raw: label='{result['label']}' score={result['score']:.4f} -> Final category='{final_category}' confidence={final_confidence}")
 
     return {
         "emotion": emotion,
         "sentiment_category": final_category,
-        "confidence": final_confidence,
-        "ignore": False
+        "confidence": final_confidence
     }
-
-@app.post("/analyze-sentiment")
-async def analyze_sentiment(payload: TextPayload):
-    if not payload.isolated_sentence or not payload.isolated_sentence.strip():
-        return {"emotion": "neutral", "sentiment_category": "ignore", "confidence": 0.0, "ignore": True}
-        
-    print(f"[Sentiment Service] Input context: '{payload.isolated_sentence}' | KW Sent: '{payload.keyword_sentiment}' | KW Weight: {payload.keyword_weight}")
-
-    with torch.inference_mode():
-        result = roberta_model(payload.isolated_sentence, truncation=True, max_length=256)[0]
-    
-    res = process_sentiment_calculation(
-        emotion=result["label"],
-        base_confidence=result["score"],
-        kw_sentiment=payload.keyword_sentiment,
-        kw_weight=payload.keyword_weight
-    )
-    
-    print(f"[Sentiment Service] Model raw: label='{result['label']}' score={result['score']:.4f} -> Final category='{res['sentiment_category']}' confidence={res['confidence']}")
-    return res
 
 @app.post("/analyze-sentiment-batch")
 async def analyze_sentiment_batch(payload: BatchPayload):
@@ -114,16 +90,39 @@ async def analyze_sentiment_batch(payload: BatchPayload):
     sentences = [item.isolated_sentence for item in payload.items]
     
     with torch.inference_mode():
+        # High-performance PyTorch vectorized batching
         batch_results = roberta_model(sentences, truncation=True, max_length=128, batch_size=32)
 
     output = []
     for item, result in zip(payload.items, batch_results):
-        res = process_sentiment_calculation(
-            emotion=result["label"],
-            base_confidence=result["score"],
-            kw_sentiment=item.keyword_sentiment,
-            kw_weight=item.keyword_weight
-        )
-        output.append(res)
+        emotion = result["label"]
+        base_confidence = result["score"]
+
+        modifier = (item.keyword_weight / 100.0) * 0.40
+        adjusted_confidence = base_confidence
+        current_category = categorize_emotion(emotion, base_confidence)
+
+        if item.keyword_sentiment == "negative":
+            if current_category == "negative":
+                adjusted_confidence = min(1.0, base_confidence + modifier)
+            else:
+                adjusted_confidence = max(0.1, base_confidence - modifier)
+                if adjusted_confidence < 0.4:
+                    emotion = "annoyance"
+                    adjusted_confidence = 0.5 + modifier
+        elif item.keyword_sentiment == "positive":
+            if current_category == "positive":
+                adjusted_confidence = min(1.0, base_confidence + modifier)
+            else:
+                adjusted_confidence = max(0.1, base_confidence - modifier)
+
+        final_confidence = round(adjusted_confidence, 4)
+        final_category = categorize_emotion(emotion, final_confidence)
+
+        output.append({
+            "emotion": emotion,
+            "sentiment_category": final_category,
+            "confidence": final_confidence
+        })
 
     return {"results": output}

@@ -168,13 +168,19 @@ async def process_text(payload: TextPayload):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Internal Gateway Error: {str(e)}")
 
+class ResetSessionPayload(BaseModel):
+    session_id: str = "default"
+
 @app.post("/api/v1/reset-session")
-async def reset_session(session_id: str = "default"):
+async def reset_session(payload: ResetSessionPayload = ResetSessionPayload()):
     try:
-        redis_key = f"session_window:{session_id}"
+        target_session = payload.session_id if payload and payload.session_id else "default"
+        redis_key = f"session_window:{target_session}"
         await redis_client.delete(redis_key)
-        print(f"[Gateway] Cleared Redis sliding window session: '{session_id}'")
-        return {"status": "success", "message": f"Session '{session_id}' cleared."}
+        await redis_client.delete("session_window:default")
+        await redis_client.delete("session_window:live_session")
+        print(f"[Gateway] Cleared Redis sliding window sessions ('{target_session}', 'default', 'live_session')")
+        return {"status": "success", "message": f"Session '{target_session}' cleared."}
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reset session: {str(e)}")
 
