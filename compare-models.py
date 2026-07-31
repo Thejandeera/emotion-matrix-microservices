@@ -16,9 +16,9 @@ NEGATIVE_EMOTIONS = {
 def categorize_emotion(emotion: str, score: float) -> str:
     """Categorize an emotion label into positive, negative, or neutral based on confidence thresholds."""
     if emotion in POSITIVE_EMOTIONS:
-        return "positive" if score >= 0.60 else "neutral"
+        return "positive" if score >= 0.50 else "neutral"
     elif emotion in NEGATIVE_EMOTIONS:
-        return "negative" if score >= 0.70 else "neutral"
+        return "negative" if score >= 0.40 else "neutral"
     else:
         return "positive" if emotion == "surprise" and score >= 0.80 else "neutral"
 

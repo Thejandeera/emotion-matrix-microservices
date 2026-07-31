@@ -1,0 +1,130 @@
+### =========================================================================
+### EMOTION MODEL INFERENCE & MICROSERVICE REQUESTS (request.http)
+### Analyzed from compare-models.py:
+### 1. RoBERTa (base): SamLowe/roberta-base-go_emotions
+### 2. ModernBERT (base): cirimus/modernbert-base-go-emotions
+### =========================================================================
+
+@hfRoBERTa = https://api-inference.huggingface.co/models/SamLowe/roberta-base-go_emotions
+@hfModernBERT = https://api-inference.huggingface.co/models/cirimus/modernbert-base-go-emotions
+@sentimentService = http://localhost:8003
+@apiGateway = http://localhost:8000
+
+### -------------------------------------------------------------------------
+### SECTION 1: Direct HuggingFace Inference API Requests
+### -------------------------------------------------------------------------
+
+### 1.1 RoBERTa (base) - Single Sample Emotion Prediction
+POST {{hfRoBERTa}}
+Content-Type: application/json
+
+{
+  "inputs": "I've been waiting for hours without any update. This is incredibly frustrating!"
+}
+
+### 1.2 ModernBERT (base) - Single Sample Emotion Prediction
+POST {{hfModernBERT}}
+Content-Type: application/json
+
+{
+  "inputs": "I've been waiting for hours without any update. This is incredibly frustrating!"
+}
+
+### 1.3 RoBERTa (base) - Positive Feedback Sample
+POST {{hfRoBERTa}}
+Content-Type: application/json
+
+{
+  "inputs": "Thank you so much for your assistance, you've been extremely helpful and kind!"
+}
+
+### 1.4 ModernBERT (base) - Positive Feedback Sample
+POST {{hfModernBERT}}
+Content-Type: application/json
+
+{
+  "inputs": "Thank you so much for your assistance, you've been extremely helpful and kind!"
+}
+
+### 1.5 RoBERTa (base) - Neutral Sample
+POST {{hfRoBERTa}}
+Content-Type: application/json
+
+{
+  "inputs": "The appointment is scheduled for tomorrow at 10 AM."
+}
+
+### 1.6 ModernBERT (base) - Neutral Sample
+POST {{hfModernBERT}}
+Content-Type: application/json
+
+{
+  "inputs": "The appointment is scheduled for tomorrow at 10 AM."
+}
+
+
+### -------------------------------------------------------------------------
+### SECTION 2: Local Sentiment & Emotion Microservice Endpoints (Port 8003)
+### -------------------------------------------------------------------------
+
+### 2.1 Local Sentiment Service - Single Sentence Analysis with History
+POST {{sentimentService}}/analyze-sentiment
+Content-Type: application/json
+
+{
+  "isolated_sentence": "I've been waiting for hours without any update. This is incredibly frustrating!",
+  "keyword_sentiment": "negative",
+  "keyword_weight": 85.0,
+  "history": [
+    {
+      "sentiment_category": "neutral",
+      "keyword_sentiment": "neutral"
+    }
+  ]
+}
+
+### 2.2 Local Sentiment Service - Batch Analysis (Parallel Model Inference)
+POST {{sentimentService}}/analyze-sentiment-batch
+Content-Type: application/json
+
+{
+  "items": [
+    {
+      "isolated_sentence": "I am so grateful for all your support today.",
+      "keyword_sentiment": "positive",
+      "keyword_weight": 90.0
+    },
+    {
+      "isolated_sentence": "Every time I reach out, nobody responds.",
+      "keyword_sentiment": "negative",
+      "keyword_weight": 80.0
+    },
+    {
+      "isolated_sentence": "Please send me the details via email.",
+      "keyword_sentiment": "neutral",
+      "keyword_weight": 0.0
+    }
+  ]
+}
+
+
+### -------------------------------------------------------------------------
+### SECTION 3: API Gateway Integrated Pipeline (Port 8000)
+### -------------------------------------------------------------------------
+
+### 3.1 API Gateway - Text Pipeline (Phrases + Emotion Classification + Redis Sliding Window)
+POST {{apiGateway}}/api/v1/process-text
+Content-Type: application/json
+
+{
+  "text": "Every time I reached out to customer support, I was asked to verify my information again. It's difficult to understand how a company can be so disorganized.",
+  "session_id": "model_comparison_session"
+}
+
+### 3.2 API Gateway - Reset Sliding Window Session
+POST {{apiGateway}}/api/v1/reset-session
+Content-Type: application/json
+
+{
+  "session_id": "model_comparison_session"
+}
