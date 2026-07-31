@@ -61,34 +61,9 @@ where:
 
 ---
 
-## 3. End-to-End Request Flow & Phase Specifications
+## 3. End-to-End Request Flow
 
-```mermaid
-sequenceDiagram
-    autonumber
-    actor User as Frontend UI (Live Page)
-    participant GW as API Gateway (:8000)
-    participant WSP as Service Whisper (:8001)
-    participant KWD as Service Phrase (:8002)
-    participant SEN as Service Sentiment (:8003)
-
-    alt Audio File Input
-        User->>GW: POST /api/v1/process-audio { audio_data, speaker }
-        GW->>WSP: POST /transcribe/base64 { audio_data }
-        WSP-->>GW: { transcript: "..." }
-    else Text Input
-        User->>GW: POST /api/v1/process-message { text, speaker }
-    end
-
-    GW->>KWD: POST /extract-keywords { text }
-    KWD-->>GW: { matches: [ { keyword, sentiment } ] }
-
-    GW->>SEN: POST /analyze-sentiment-batch { items: [ { isolated_sentence } ] }
-    SEN-->>GW: { results: [ { emotion, sentiment_category, confidence } ] }
-
-    GW-->>User: Response Payload { status, processing_time_ms, detected_issues }
-    Note over User: Calculate S_i from confidence<br/>Update Cumulative Average S_aggregate<br/>Align UI (Agent Right / Caller Left)
-```
+![End-to-End Request Flow](resources/flow-diagram.png)
 
 ---
 
