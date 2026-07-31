@@ -20,11 +20,10 @@ const APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwudCW1hW9TbEV
 interface KeywordData {
   keyword: string;
   sentiment: string;
-  weight: number;
+  weight?: number;
 }
 
 export default function AdminDashboard() {
-  // Keyword Analysis Weights State
   const [keywords, setKeywords] = useState<KeywordData[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [networkError, setNetworkError] = useState<string | null>(null);
@@ -32,10 +31,8 @@ export default function AdminDashboard() {
   const [showKeywordModal, setShowKeywordModal] = useState<boolean>(false);
   const [newKwWord, setNewKwWord] = useState("");
   const [newKwSentiment, setNewKwSentiment] = useState("negative");
-  const [newKwWeight, setNewKwWeight] = useState(50);
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
-  // Load actual initial keywords directly from Google Apps Script (NO DEFAULT FALLBACKS)
   const fetchRemoteKeywords = async () => {
     setIsLoading(true);
     setNetworkError(null);
@@ -63,18 +60,16 @@ export default function AdminDashboard() {
     fetchRemoteKeywords();
   }, []);
 
-  // Keyword Actions
   const handleAddKeyword = async () => {
     if (!newKwWord.trim()) return;
     const kwObj: KeywordData = {
       keyword: newKwWord.trim().toLowerCase(),
       sentiment: newKwSentiment,
-      weight: newKwWeight,
+      weight: 50,
     };
     const updated = [...keywords, kwObj];
     setKeywords(updated);
     setNewKwWord("");
-    setNewKwWeight(50);
     setShowKeywordModal(false);
     autoSave(updated);
   };
@@ -86,13 +81,6 @@ export default function AdminDashboard() {
     autoSave(updated);
   };
 
-  const handleWeightChange = (index: number, val: number) => {
-    const updated = [...keywords];
-    updated[index].weight = val;
-    setKeywords(updated);
-  };
-
-  // Save to Google Sheets
   const autoSave = async (updatedList: KeywordData[]) => {
     setIsSaving(true);
     setNetworkError(null);
@@ -123,7 +111,7 @@ export default function AdminDashboard() {
             <div>
               <h1 className="admin-title">Supervisor Configuration Dashboard</h1>
               <p className="admin-subtitle">
-                Manage keyword analysis weights and impact scores.
+                Manage monitored keywords and target sentiment categories.
               </p>
             </div>
           </div>
@@ -167,12 +155,12 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* KEYWORD ANALYSIS WEIGHTS SECTION */}
+        {/* MONITORED KEYWORDS SECTION */}
         <section className="admin-section">
           <div className="admin-section-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
               <h2 className="admin-section-title">
-                <TextAa size={20} style={{ color: '#64748b' }} /> Keyword Analysis Weights
+                <TextAa size={20} style={{ color: '#64748b' }} /> Monitored Target Keywords
               </h2>
               {isSaving && (
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: '#ff5722', fontWeight: 600 }}>
@@ -187,7 +175,7 @@ export default function AdminDashboard() {
 
           <div className="admin-section-body">
             <p style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '1.5rem', fontWeight: 500 }}>
-              Assign a weight (0-100) to specific words. Real configuration loaded live from Google Sheets endpoint.
+              Configure target keywords for real-time phrase detection and highlighting during call monitoring.
             </p>
 
             {/* LOADING STATE */}
@@ -210,20 +198,9 @@ export default function AdminDashboard() {
                         </button>
                       </div>
                     </div>
-                    <div className="keyword-weight-row">
-                      <span>Impact Weight</span>
-                      <span className="weight-val-badge">{kw.weight}</span>
+                    <div style={{ fontSize: '0.72rem', color: '#64748b', marginTop: '0.5rem', fontWeight: 600 }}>
+                      Classification: <span style={{ color: kw.sentiment === 'negative' ? '#dc2626' : '#059669', textTransform: 'capitalize' }}>{kw.sentiment}</span>
                     </div>
-                    <input
-                      type="range"
-                      min="0"
-                      max="100"
-                      value={kw.weight}
-                      onChange={(e) => handleWeightChange(idx, parseInt(e.target.value))}
-                      onMouseUp={() => autoSave(keywords)}
-                      onTouchEnd={() => autoSave(keywords)}
-                      className="accent-range"
-                    />
                   </div>
                 ))}
               </div>
@@ -288,21 +265,6 @@ export default function AdminDashboard() {
                   </label>
                 </div>
               </div>
-              <div className="form-group">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <label className="form-label">Initial Impact Weight</label>
-                  <span className="weight-val-badge">{newKwWeight}</span>
-                </div>
-                <input
-                  type="range"
-                  min="0"
-                  max="100"
-                  value={newKwWeight}
-                  onChange={(e) => setNewKwWeight(parseInt(e.target.value))}
-                  className="accent-range"
-                  style={{ marginTop: '0.5rem' }}
-                />
-              </div>
             </div>
             <div className="modal-footer">
               <button onClick={() => setShowKeywordModal(false)} className="btn-secondary">
@@ -317,4 +279,4 @@ export default function AdminDashboard() {
       )}
     </div>
   );
-}
+}

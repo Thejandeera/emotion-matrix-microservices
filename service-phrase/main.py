@@ -6,13 +6,14 @@ from spacy.matcher import PhraseMatcher
 from fastapi import FastAPI
 from pydantic import BaseModel
 
-app = FastAPI(title="Phrase Extraction Service")
+app = FastAPI(title="Keyword Detection Service")
 
-# ⚠️ PASTE YOUR GOOGLE APPS SCRIPT URL HERE
+# Google Apps Script Endpoint for Admin-entered Keywords
 APPS_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwwudCW1hW9TbEV3btIXJl9rYi3GYU2E1jQ55mAXj9LAniuG8i0SLPMmrRrgWgsdHAQWA/exec"
 
 class TextPayload(BaseModel):
-    transcript: str
+    transcript: str = ""
+    text: str = ""
 
 nlp = None
 
@@ -29,11 +30,13 @@ def load_spacy():
     print("[Phrase Service] Ready.")
 
 @app.post("/extract-phrases")
-async def extract_phrases(payload: TextPayload):
-    if not payload.transcript:
-        return {"matches": []}
+@app.post("/extract-keywords")
+async def extract_keywords(payload: TextPayload):
+    text_content = payload.text if payload.text else payload.transcript
+    if not text_content:
+        return {"matches": [], "keywords": []}
 
-    # Fetch latest configuration from Google Sheets
+    # Fetch admin keywords from Google Sheets
     try:
         remote_data = requests.get(APPS_SCRIPT_URL).json()
     except Exception:
@@ -43,29 +46,30 @@ async def extract_phrases(payload: TextPayload):
     keyword_db = {}
     
     for item in remote_data:
-        kw = item["keyword"]
-        keyword_db[kw] = {"sentiment": item["sentiment"], "weight": item["weight"]}
-        matcher.add(kw, [nlp.make_doc(kw)])
+        kw = item.get("keyword", "")
+        if kw:
+            keyword_db[kw.lower()] = item.get("sentiment", "neutral")
+            matcher.add(kw, [nlp.make_doc(kw)])
 
-    doc = nlp(payload.transcript)
+    doc = nlp(text_content)
     matches = matcher(doc)
     
-    results = []
-    analyzed_sentences = set()
+    detected_keywords = []
+    seen = set()
     
     for match_id, start, end in matches:
         matched_span = doc[start:end]
-        isolated_sentence = matched_span.sent.text.strip()
         kw_text = matched_span.text.lower()
         
-        if isolated_sentence not in analyzed_sentences:
-            kw_info = keyword_db.get(kw_text, {"sentiment": "neutral", "weight": 0})
-            results.append({
-                "phrase": matched_span.text,
-                "isolated_sentence": isolated_sentence,
-                "keyword_sentiment": kw_info["sentiment"],
-                "keyword_weight": kw_info["weight"]
+        if kw_text not in seen:
+            sentiment = keyword_db.get(kw_text, "neutral")
+            detected_keywords.append({
+                "keyword": matched_span.text,
+                "sentiment": sentiment
             })
-            analyzed_sentences.add(isolated_sentence)
+            seen.add(kw_text)
             
-    return {"matches": results}
+    return {
+        "matches": detected_keywords,
+        "keywords": detected_keywords
+    }
