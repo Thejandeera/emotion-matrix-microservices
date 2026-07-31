@@ -85,7 +85,7 @@ export default function LiveMonitor() {
       return {
         id: `msg-${Date.now()}-${idx}`,
         speaker: (item.speaker === "agent" ? "agent" : "caller") as "agent" | "caller",
-        isolated_sentence: item.isolated_sentence || item.text || "",
+        isolated_sentence: item.isolated_sentence || "",
         phrase: item.phrase || (kws.length > 0 ? kws[0].keyword : "N/A"),
         detected_keywords: kws,
         emotion: item.emotion || "neutral",

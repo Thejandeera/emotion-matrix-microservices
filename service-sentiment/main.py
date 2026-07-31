@@ -28,7 +28,7 @@ def categorize_emotion(emotion: str, score: float) -> str:
         "anger", "annoyance", "disappointment", "disapproval", "disgust",
         "embarrassment", "fear", "grief", "nervousness", "remorse", "sadness"
     }
-
+    # emotions that not mentioned  confusion, curiosity, realization
     if emotion in positive_emotions:
         return "positive" if score >= 0.50 else "neutral"
     elif emotion in negative_emotions:

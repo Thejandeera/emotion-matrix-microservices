@@ -132,7 +132,6 @@ where:
   "processing_time_ms": 14.52,
   "detected_issues": [
     {
-      "text": "I want to cancel my account immediately.",
       "isolated_sentence": "I want to cancel my account immediately.",
       "speaker": "caller",
       "phrase": "cancel account",

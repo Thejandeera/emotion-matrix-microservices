@@ -92,7 +92,6 @@ async def process_message(payload: MessagePayload):
             "status": "success",
             "processing_time_ms": processing_time_ms,
             "detected_issues": [{
-                "text": text,
                 "isolated_sentence": text,
                 "speaker": speaker,
                 "phrase": detected_keywords[0]["keyword"] if detected_keywords else "N/A",
@@ -159,7 +158,6 @@ async def process_audio(payload: AudioPayload):
             
             for sent, kws, s_data in zip(sentences, keywords_per_sentence, batch_outputs):
                 final_results.append({
-                    "text": sent,
                     "isolated_sentence": sent,
                     "speaker": speaker,
                     "phrase": kws[0]["keyword"] if kws else "N/A",
@@ -172,7 +170,6 @@ async def process_audio(payload: AudioPayload):
             print(f"Warning: Sentiment batch analysis error: {e}")
             for sent, kws in zip(sentences, keywords_per_sentence):
                 final_results.append({
-                    "text": sent,
                     "isolated_sentence": sent,
                     "speaker": speaker,
                     "phrase": kws[0]["keyword"] if kws else "N/A",
