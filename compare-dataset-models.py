@@ -3,6 +3,14 @@ import subprocess
 import time
 import os
 
+if sys.platform == "win32":
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")
+        sys.stderr.reconfigure(encoding="utf-8")
+    except Exception:
+        pass
+
+
 # Auto-install pandas and openpyxl if missing in environment
 try:
     import pandas as pd
