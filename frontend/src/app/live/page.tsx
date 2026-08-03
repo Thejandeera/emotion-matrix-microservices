@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, KeyboardEvent } from "react";
+import { useState, useMemo, useCallback, useEffect, KeyboardEvent } from "react";
 import "./live.css";
 import {
   Broadcast,
@@ -91,6 +91,7 @@ function renderSentenceWithHighlight(msg: ChatMessage) {
 
 export default function LiveMonitor() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [recentMessages, setRecentMessages] = useState<ChatMessage[]>([]);
   const [transcript, setTranscript] = useState<string>("");
   const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -107,6 +108,29 @@ export default function LiveMonitor() {
   const [showSummary, setShowSummary] = useState<boolean>(false);
   const [isRefreshingSummary, setIsRefreshingSummary] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ title: string; body: string } | null>(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const savedAll = sessionStorage.getItem("all_chat_messages");
+        if (savedAll) {
+          const parsedAll = JSON.parse(savedAll);
+          setMessages(parsedAll);
+          setTranscript(parsedAll.map((m: ChatMessage) => m.isolated_sentence).join(" "));
+        }
+
+        const savedRecent = sessionStorage.getItem("last_6_chat_messages");
+        if (savedRecent) {
+          setRecentMessages(JSON.parse(savedRecent));
+        } else if (savedAll) {
+          const parsedAll = JSON.parse(savedAll);
+          setRecentMessages(parsedAll.slice(-6));
+        }
+      } catch (e) {
+        console.error("Failed to load conversation history from sessionStorage:", e);
+      }
+    }
+  }, []);
 
   const addGatewayIssuesToMessages = useCallback((newIssues: any[], fullTranscript: string = "") => {
     if (!newIssues || newIssues.length === 0) return;
@@ -130,7 +154,23 @@ export default function LiveMonitor() {
       };
     });
 
-    setMessages((prev) => [...prev, ...formattedMessages]);
+    setMessages((prevAll) => {
+      const updatedAll = [...prevAll, ...formattedMessages];
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("all_chat_messages", JSON.stringify(updatedAll));
+      }
+      return updatedAll;
+    });
+
+    setRecentMessages((prevRecent) => {
+      const combined = [...prevRecent, ...formattedMessages];
+      const updatedRecent = combined.slice(-6);
+      if (typeof window !== "undefined") {
+        sessionStorage.setItem("last_6_chat_messages", JSON.stringify(updatedRecent));
+      }
+      return updatedRecent;
+    });
+
     if (fullTranscript) {
       setTranscript((prev) => (prev ? `${prev} ${fullTranscript}` : fullTranscript));
     } else {
@@ -171,14 +211,14 @@ export default function LiveMonitor() {
     setTimeout(() => setToastMessage(null), 4000);
   }, []);
 
-  const negativeMessages = useMemo(() => messages.filter((m) => m.sentiment_category === "negative"), [messages]);
-  const positiveMessages = useMemo(() => messages.filter((m) => m.sentiment_category === "positive"), [messages]);
+  const recentNegativeMessages = useMemo(() => recentMessages.filter((m) => m.sentiment_category === "negative"), [recentMessages]);
+  const recentPositiveMessages = useMemo(() => recentMessages.filter((m) => m.sentiment_category === "positive"), [recentMessages]);
 
   const realOverallScore = useMemo(() => {
-    if (messages.length === 0) return 0;
-    const totalSum = messages.reduce((acc, m) => acc + m.sentence_score, 0);
-    return Math.round(totalSum / messages.length);
-  }, [messages]);
+    if (recentMessages.length === 0) return 0;
+    const totalSum = recentMessages.reduce((acc, m) => acc + m.sentence_score, 0);
+    return Math.round(totalSum / recentMessages.length);
+  }, [recentMessages]);
 
   const pointerLeftPercent = useMemo(() => {
     return Math.min(95, Math.max(5, ((realOverallScore + 100) / 200) * 100));
@@ -409,10 +449,10 @@ export default function LiveMonitor() {
 
                           <div className="summary-item-box">
                             <div className="summary-item-title">
-                              <WarningOctagon size={16} style={{ color: realOverallScore < 0 ? '#ef4444' : '#10b981' }} /> RoBERTa Sentiment Score
+                              <WarningOctagon size={16} style={{ color: realOverallScore < 0 ? '#ef4444' : '#10b981' }} /> RoBERTa Sentiment Score (Last {recentMessages.length})
                             </div>
                             <p style={{ margin: 0, color: '#475569', lineHeight: 1.5 }}>
-                              Cumulative Average Score: <strong style={{ color: realOverallScore < 0 ? '#dc2626' : '#059669' }}>({realOverallScore}%)</strong>. Negative segments: {negativeMessages.length}, Positive: {positiveMessages.length}.
+                              Rolling Average Score: <strong style={{ color: realOverallScore < 0 ? '#dc2626' : '#059669' }}>({realOverallScore}%)</strong>. Negative segments: {recentNegativeMessages.length}, Positive: {recentPositiveMessages.length}.
                             </p>
                           </div>
                         </div>
@@ -554,7 +594,7 @@ export default function LiveMonitor() {
           >
             <div className="scalable-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <h2 className="card-title-sm" style={{ marginBottom: '1.25rem', textAlign: 'center', width: '100%' }}>
-                Cumulative RoBERTa Sentiment Score
+                Rolling Sentiment Score (Last {recentMessages.length > 0 ? recentMessages.length : 6} Sentences)
               </h2>
 
               <div style={{ width: '100%', position: 'relative', padding: '0 0.5rem', marginBottom: '0.75rem' }}>
@@ -575,8 +615,8 @@ export default function LiveMonitor() {
                 {realOverallScore > 0 ? `+${realOverallScore}%` : `${realOverallScore}%`}
               </div>
               <p style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', fontWeight: 500, margin: 0, maxWidth: '220px' }}>
-                {messages.length > 0
-                  ? `Average score over ${messages.length} sentences calculated from RoBERTa confidence`
+                {recentMessages.length > 0
+                  ? `Rolling average over last ${recentMessages.length} sentence(s) (max 6)`
                   : "Waiting for chat input to calculate score"}
               </p>
             </div>
