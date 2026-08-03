@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import "./admin.css";
 import {
   Sliders,
@@ -33,7 +33,7 @@ export default function AdminDashboard() {
   const [newKwSentiment, setNewKwSentiment] = useState("negative");
   const [saveSuccessMessage, setSaveSuccessMessage] = useState<string | null>(null);
 
-  const fetchRemoteKeywords = async () => {
+  const fetchRemoteKeywords = useCallback(async () => {
     setIsLoading(true);
     setNetworkError(null);
     try {
@@ -54,34 +54,13 @@ export default function AdminDashboard() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     fetchRemoteKeywords();
-  }, []);
+  }, [fetchRemoteKeywords]);
 
-  const handleAddKeyword = async () => {
-    if (!newKwWord.trim()) return;
-    const kwObj: KeywordData = {
-      keyword: newKwWord.trim().toLowerCase(),
-      sentiment: newKwSentiment,
-      weight: 50,
-    };
-    const updated = [...keywords, kwObj];
-    setKeywords(updated);
-    setNewKwWord("");
-    setShowKeywordModal(false);
-    autoSave(updated);
-  };
-
-  const handleRemoveKeyword = (index: number) => {
-    const updated = [...keywords];
-    updated.splice(index, 1);
-    setKeywords(updated);
-    autoSave(updated);
-  };
-
-  const autoSave = async (updatedList: KeywordData[]) => {
+  const autoSave = useCallback(async (updatedList: KeywordData[]) => {
     setIsSaving(true);
     setNetworkError(null);
     try {
@@ -97,11 +76,31 @@ export default function AdminDashboard() {
     } finally {
       setIsSaving(false);
     }
-  };
+  }, []);
+
+  const handleAddKeyword = useCallback(async () => {
+    if (!newKwWord.trim()) return;
+    const kwObj: KeywordData = {
+      keyword: newKwWord.trim().toLowerCase(),
+      sentiment: newKwSentiment,
+      weight: 50,
+    };
+    const updated = [...keywords, kwObj];
+    setKeywords(updated);
+    setNewKwWord("");
+    setShowKeywordModal(false);
+    autoSave(updated);
+  }, [newKwWord, newKwSentiment, keywords, autoSave]);
+
+  const handleRemoveKeyword = useCallback((index: number) => {
+    const updated = [...keywords];
+    updated.splice(index, 1);
+    setKeywords(updated);
+    autoSave(updated);
+  }, [keywords, autoSave]);
 
   return (
     <div className="admin-container">
-      {/* TOP HEADER */}
       <header className="admin-header">
         <div className="admin-header-inner">
           <div className="admin-brand">
@@ -127,9 +126,7 @@ export default function AdminDashboard() {
         </div>
       </header>
 
-      {/* MAIN CONTENT CONTAINER */}
       <main className="admin-main">
-        {/* Toast / Success Notification */}
         {saveSuccessMessage && (
           <div style={{ backgroundColor: '#10b981', color: '#fff', padding: '0.85rem 1.25rem', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 700 }}>
             <span>{saveSuccessMessage}</span>
@@ -139,7 +136,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* NETWORK ERROR ALERT */}
         {networkError && (
           <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '1rem 1.25rem', borderRadius: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '0.8rem', fontWeight: 600 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
@@ -155,7 +151,6 @@ export default function AdminDashboard() {
           </div>
         )}
 
-        {/* MONITORED KEYWORDS SECTION */}
         <section className="admin-section">
           <div className="admin-section-header">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -178,7 +173,6 @@ export default function AdminDashboard() {
               Configure target keywords for real-time phrase detection and highlighting during call monitoring.
             </p>
 
-            {/* LOADING STATE */}
             {isLoading ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '3rem 1rem', color: '#64748b', gap: '0.5rem' }}>
                 <Spinner size={24} className="animate-spin" style={{ color: '#ff5722' }} />
@@ -215,7 +209,6 @@ export default function AdminDashboard() {
         </section>
       </main>
 
-      {/* Add Keyword Modal */}
       {showKeywordModal && (
         <div className="modal-backdrop">
           <div className="modal-card">
@@ -279,4 +272,4 @@ export default function AdminDashboard() {
       )}
     </div>
   );
-}
+}

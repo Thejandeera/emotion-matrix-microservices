@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, ChangeEvent, KeyboardEvent } from "react";
+import { useState, useMemo, useCallback, KeyboardEvent } from "react";
 import "./live.css";
 import {
   Broadcast,
@@ -13,7 +13,6 @@ import {
   Copy,
   ArrowsOutLineHorizontal,
   WarningCircle,
-  UploadSimple,
   Spinner,
   Timer,
   Cpu,
@@ -34,46 +33,82 @@ interface ChatMessage {
   emotion: string;
   sentiment_category: string;
   confidence: number;
-  sentence_score: number; // confidence based (-100 to +100)
+  sentence_score: number;
+}
+
+function computeSentenceScore(category: string, confidence: number): number {
+  if (category === "positive") {
+    return Math.round(confidence * 100);
+  } else if (category === "negative") {
+    return Math.round(-confidence * 100);
+  }
+  return 0;
+}
+
+function renderSentenceWithHighlight(msg: ChatMessage) {
+  const sentence = msg.isolated_sentence;
+  const kws = msg.detected_keywords || [];
+  
+  if (kws.length === 0 && (!msg.phrase || msg.phrase === "N/A")) {
+    return <span>{sentence}</span>;
+  }
+
+  const targetWords = kws.map((k) => k.keyword).concat(msg.phrase && msg.phrase !== "N/A" ? [msg.phrase] : []);
+  const validWords = targetWords.filter((w) => w && sentence.toLowerCase().includes(w.toLowerCase()));
+
+  if (validWords.length === 0) {
+    return <span>{sentence}</span>;
+  }
+
+  const pattern = validWords.map((w) => w.replace(/[-[\]{}()*+?.:\\^$|#\s]/g, '\\$&')).join('|');
+  const regex = new RegExp(`(${pattern})`, "gi");
+  const parts = sentence.split(regex);
+
+  return (
+    <span>
+      {parts.map((part, idx) => {
+        const matchKw = kws.find((k) => k.keyword.toLowerCase() === part.toLowerCase());
+        if (matchKw || validWords.some((w) => w.toLowerCase() === part.toLowerCase())) {
+          const wordSent = matchKw ? matchKw.sentiment : msg.sentiment_category;
+          const highlightClass =
+            wordSent === "negative"
+              ? "kw-highlight-red"
+              : wordSent === "positive"
+              ? "kw-highlight-green"
+              : "kw-highlight-grey";
+
+          return (
+            <span key={idx} className={highlightClass}>
+              {part}
+            </span>
+          );
+        }
+        return <span key={idx}>{part}</span>;
+      })}
+    </span>
+  );
 }
 
 export default function LiveMonitor() {
-  // Messages & Gateway Processing State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [transcript, setTranscript] = useState<string>("");
   const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Chat Input State
   const [activeRole, setActiveRole] = useState<"agent" | "caller">("caller");
   const [inputText, setInputText] = useState<string>("");
 
-  // Layout & Resizing State
-  const [leftColWidth, setLeftColWidth] = useState<number>(65); // percentage
+  const [leftColWidth, setLeftColWidth] = useState<number>(65);
   const [cardScale, setCardScale] = useState<number>(1.0);
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
 
-  // Call Summary State
   const [showSummary, setShowSummary] = useState<boolean>(false);
   const [isRefreshingSummary, setIsRefreshingSummary] = useState<boolean>(false);
-
-  // Toast State
   const [toastMessage, setToastMessage] = useState<{ title: string; body: string } | null>(null);
 
-  // Helper to compute sentence score from RoBERTa confidence score
-  const computeSentenceScore = (category: string, confidence: number): number => {
-    if (category === "positive") {
-      return Math.round(confidence * 100);
-    } else if (category === "negative") {
-      return Math.round(-confidence * 100);
-    }
-    return 0; // neutral
-  };
-
-  // Process message array returned from API Gateway
-  const addGatewayIssuesToMessages = (newIssues: any[], fullTranscript: string = "") => {
+  const addGatewayIssuesToMessages = useCallback((newIssues: any[], fullTranscript: string = "") => {
     if (!newIssues || newIssues.length === 0) return;
 
     const formattedMessages: ChatMessage[] = newIssues.map((item, idx) => {
@@ -102,48 +137,9 @@ export default function LiveMonitor() {
       const addedText = formattedMessages.map((m) => m.isolated_sentence).join(" ");
       setTranscript((prev) => (prev ? `${prev} ${addedText}` : addedText));
     }
-  };
+  }, []);
 
-  // Audio File Upload Handler
-  const handleFileChange = async (e: ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = e.target.files?.[0];
-    if (!selectedFile) return;
-
-    const reader = new FileReader();
-    reader.onload = async (event) => {
-      const result = event.target?.result as string;
-      const b64 = result.split(",")[1];
-      processAudioPayload(b64);
-    };
-    reader.readAsDataURL(selectedFile);
-  };
-
-  // Send Base64 payload to Gateway
-  const processAudioPayload = async (b64Data: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("http://localhost:8000/api/v1/process-audio", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ audio_data: b64Data, speaker: activeRole }),
-      });
-      const data = await res.json();
-      if (data.status === "success") {
-        addGatewayIssuesToMessages(data.detected_issues || [], data.transcript || "");
-        setProcessingTimeMs(data.processing_time_ms || 0);
-      } else {
-        setError(data.detail || "Error processing audio");
-      }
-    } catch (err) {
-      setError("Failed to connect to API Gateway at http://localhost:8000");
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  // Send Text Message to Gateway
-  const handleSendTextMessage = async () => {
+  const handleSendTextMessage = useCallback(async () => {
     if (!inputText.trim() || isLoading) return;
     const textToSend = inputText.trim();
     setInputText("");
@@ -168,114 +164,70 @@ export default function LiveMonitor() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [inputText, isLoading, activeRole, addGatewayIssuesToMessages]);
 
-  // Toast Helper
-  const triggerToast = (title: string, body: string) => {
+  const triggerToast = useCallback((title: string, body: string) => {
     setToastMessage({ title, body });
     setTimeout(() => setToastMessage(null), 4000);
-  };
+  }, []);
 
-  // ================= SCORE & KEYWORD AGGREGATION LOGIC ================= //
-  const negativeMessages = messages.filter((m) => m.sentiment_category === "negative");
-  const positiveMessages = messages.filter((m) => m.sentiment_category === "positive");
+  const negativeMessages = useMemo(() => messages.filter((m) => m.sentiment_category === "negative"), [messages]);
+  const positiveMessages = useMemo(() => messages.filter((m) => m.sentiment_category === "positive"), [messages]);
 
-  // Calculate Cumulative Average Score (-100 to +100) across all sentences
-  let realOverallScore = 0;
-  if (messages.length > 0) {
+  const realOverallScore = useMemo(() => {
+    if (messages.length === 0) return 0;
     const totalSum = messages.reduce((acc, m) => acc + m.sentence_score, 0);
-    realOverallScore = Math.round(totalSum / messages.length);
-  }
+    return Math.round(totalSum / messages.length);
+  }, [messages]);
 
-  // Position on gauge track (5% to 95%)
-  const pointerLeftPercent = Math.min(95, Math.max(5, ((realOverallScore + 100) / 200) * 100));
+  const pointerLeftPercent = useMemo(() => {
+    return Math.min(95, Math.max(5, ((realOverallScore + 100) / 200) * 100));
+  }, [realOverallScore]);
 
-  // Extract Real Unique Matched Keywords across messages
-  const realKeywordMap = new Map<string, { count: number; sentiment: string }>();
-  messages.forEach((msg) => {
-    if (msg.detected_keywords && msg.detected_keywords.length > 0) {
-      msg.detected_keywords.forEach((kwObj) => {
-        const kw = kwObj.keyword.toLowerCase();
+  const realKeywords = useMemo(() => {
+    const realKeywordMap = new Map<string, { count: number; sentiment: string }>();
+    messages.forEach((msg) => {
+      if (msg.detected_keywords && msg.detected_keywords.length > 0) {
+        msg.detected_keywords.forEach((kwObj) => {
+          const kw = kwObj.keyword.toLowerCase();
+          const existing = realKeywordMap.get(kw);
+          if (existing) {
+            existing.count += 1;
+          } else {
+            realKeywordMap.set(kw, { count: 1, sentiment: kwObj.sentiment || msg.sentiment_category });
+          }
+        });
+      } else if (msg.phrase && msg.phrase !== "N/A") {
+        const kw = msg.phrase.toLowerCase();
         const existing = realKeywordMap.get(kw);
         if (existing) {
           existing.count += 1;
         } else {
-          realKeywordMap.set(kw, { count: 1, sentiment: kwObj.sentiment || msg.sentiment_category });
+          realKeywordMap.set(kw, { count: 1, sentiment: msg.sentiment_category });
         }
-      });
-    } else if (msg.phrase && msg.phrase !== "N/A") {
-      const kw = msg.phrase.toLowerCase();
-      const existing = realKeywordMap.get(kw);
-      if (existing) {
-        existing.count += 1;
-      } else {
-        realKeywordMap.set(kw, { count: 1, sentiment: msg.sentiment_category });
       }
-    }
-  });
+    });
 
-  const realKeywords = Array.from(realKeywordMap.entries()).map(([kw, data]) => ({
-    keyword: kw,
-    count: data.count,
-    sentiment: data.sentiment,
-  }));
+    return Array.from(realKeywordMap.entries()).map(([kw, data]) => ({
+      keyword: kw,
+      count: data.count,
+      sentiment: data.sentiment,
+    }));
+  }, [messages]);
 
-  // Render sentence with highlighted keywords
-  const renderSentenceWithHighlight = (msg: ChatMessage) => {
-    const sentence = msg.isolated_sentence;
-    const kws = msg.detected_keywords || [];
-    
-    if (kws.length === 0 && (!msg.phrase || msg.phrase === "N/A")) {
-      return <span>{sentence}</span>;
-    }
-
-    const targetWords = kws.map((k) => k.keyword).concat(msg.phrase && msg.phrase !== "N/A" ? [msg.phrase] : []);
-    const validWords = targetWords.filter((w) => w && sentence.toLowerCase().includes(w.toLowerCase()));
-
-    if (validWords.length === 0) {
-      return <span>{sentence}</span>;
-    }
-
-    const pattern = validWords.map((w) => w.replace(/[-[\]{}()*+?.:\\^$|#\s]/g, '\\$&')).join('|');
-    const regex = new RegExp(`(${pattern})`, "gi");
-    const parts = sentence.split(regex);
-
-    return (
-      <span>
-        {parts.map((part, idx) => {
-          const matchKw = kws.find((k) => k.keyword.toLowerCase() === part.toLowerCase());
-          if (matchKw || validWords.some((w) => w.toLowerCase() === part.toLowerCase())) {
-            const wordSent = matchKw ? matchKw.sentiment : msg.sentiment_category;
-            const highlightClass =
-              wordSent === "negative"
-                ? "kw-highlight-red"
-                : wordSent === "positive"
-                ? "kw-highlight-green"
-                : "kw-highlight-grey";
-
-            return (
-              <span key={idx} className={highlightClass}>
-                {part}
-              </span>
-            );
-          }
-          return <span key={idx}>{part}</span>;
-        })}
-      </span>
+  const filteredMessages = useMemo(() => {
+    if (!searchQuery.trim()) return messages;
+    const q = searchQuery.toLowerCase();
+    return messages.filter(
+      (msg) =>
+        msg.isolated_sentence.toLowerCase().includes(q) ||
+        msg.phrase.toLowerCase().includes(q) ||
+        (msg.detected_keywords && msg.detected_keywords.some((k) => k.keyword.toLowerCase().includes(q)))
     );
-  };
-
-  // Filtered messages based on search query
-  const filteredMessages = messages.filter(
-    (msg) =>
-      msg.isolated_sentence.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      msg.phrase.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (msg.detected_keywords && msg.detected_keywords.some((k) => k.keyword.toLowerCase().includes(searchQuery.toLowerCase())))
-  );
+  }, [messages, searchQuery]);
 
   return (
     <div className="live-page-root">
-      {/* STICKY TOP HEADER */}
       <header className="live-header">
         <div className="live-header-left">
           <div className="live-title-group">
@@ -285,22 +237,10 @@ export default function LiveMonitor() {
             <h1 className="live-title">Live Call Sentiment</h1>
           </div>
         </div>
-
-        <div className="live-header-right">
-          {/* Audio Upload Button */}
-          <label className="btn-upload">
-            <UploadSimple size={16} style={{ color: '#ff5722' }} />
-            <span>Upload Audio ({activeRole.toUpperCase()})</span>
-            <input type="file" accept="audio/*" onChange={handleFileChange} style={{ display: 'none' }} />
-          </label>
-        </div>
       </header>
 
-      {/* MAIN CONTENT AREA */}
       <main className="live-main-container">
-        {/* ================= LEFT COLUMN: CHAT TRANSCRIPT & INPUT ================= */}
         <div className="left-column-panel" style={{ width: `${leftColWidth}%` }}>
-          {/* Top Bar: Search & Role Selector */}
           <div className="transcript-search-header">
             <div className="transcript-search-input-wrap">
               <MagnifyingGlass size={16} style={{ position: 'absolute', left: '0.75rem', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8' }} />
@@ -313,7 +253,6 @@ export default function LiveMonitor() {
               />
             </div>
 
-            {/* Speaker Role Selector Toggle */}
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', backgroundColor: '#f1f5f9', padding: '3px', borderRadius: '8px' }}>
               <button
                 onClick={() => setActiveRole("caller")}
@@ -350,7 +289,6 @@ export default function LiveMonitor() {
             </div>
           </div>
 
-          {/* Transcript Feed */}
           <div className="transcript-feed-area">
             {error && (
               <div style={{ backgroundColor: '#fef2f2', border: '1px solid #fecaca', color: '#b91c1c', padding: '0.85rem', borderRadius: '10px', fontSize: '0.75rem', fontWeight: 500 }}>
@@ -358,7 +296,6 @@ export default function LiveMonitor() {
               </div>
             )}
 
-            {/* Skeleton Loading State */}
             {isLoading && messages.length === 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '1.25rem', width: '100%' }}>
                 <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', width: '100%' }}>
@@ -371,7 +308,6 @@ export default function LiveMonitor() {
               </div>
             )}
 
-            {/* EMPTY STATE */}
             {messages.length === 0 && !isLoading && (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '4rem 2rem', textAlign: 'center', color: '#94a3b8', margin: 'auto' }}>
                 <div style={{ width: '48px', height: '48px', borderRadius: '50%', backgroundColor: '#f1f5f9', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '1rem', color: '#cbd5e1' }}>
@@ -379,12 +315,11 @@ export default function LiveMonitor() {
                 </div>
                 <h3 style={{ fontSize: '1rem', fontWeight: 700, color: '#475569', marginBottom: '0.35rem' }}>No Transcript or Chat Messages</h3>
                 <p style={{ fontSize: '0.75rem', color: '#94a3b8', maxWidth: '340px', lineHeight: 1.5, margin: 0 }}>
-                  Enter a sentence below or upload an audio file to view real-time chat alignment, keyword detection, and RoBERTa confidence scores.
+                  Enter a sentence below to view real-time chat alignment, keyword detection, and RoBERTa confidence scores.
                 </p>
               </div>
             )}
 
-            {/* CHAT MESSAGES FEED - AGENT ON RIGHT, CALLER ON LEFT */}
             {filteredMessages.map((msg, idx) => {
               const isAgent = msg.speaker === "agent";
               const badgeClass =
@@ -427,7 +362,6 @@ export default function LiveMonitor() {
               );
             })}
 
-            {/* AI Summary Section */}
             {messages.length > 0 && (
               <div style={{ marginTop: '0.75rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', width: '100%' }}>
                 <button onClick={() => setShowSummary(!showSummary)} className="summary-trigger-btn">
@@ -502,7 +436,6 @@ export default function LiveMonitor() {
             )}
           </div>
 
-          {/* CHAT INPUT BAR AT BOTTOM OF TRANSCRIPT PANEL */}
           <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--live-border)', backgroundColor: '#ffffff', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input
               type="text"
@@ -545,7 +478,6 @@ export default function LiveMonitor() {
           </div>
         </div>
 
-        {/* ================= RESIZER HANDLE ================= */}
         <div
           onMouseDown={(e) => {
             e.preventDefault();
@@ -572,9 +504,7 @@ export default function LiveMonitor() {
           <div className="resizer-line"></div>
         </div>
 
-        {/* ================= RIGHT COLUMN: SITUATION SUMMARY ================= */}
         <div className="right-column-panel">
-          {/* CARD SCALE CONTROLS TOOLBAR */}
           <div className="scale-toolbar">
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontWeight: 700, color: '#334155' }}>
               <ArrowsOutLineHorizontal size={16} style={{ color: '#ff5722' }} />
@@ -619,11 +549,9 @@ export default function LiveMonitor() {
             </div>
           </div>
 
-          {/* SCALABLE CARDS CONTAINER */}
           <div
             style={{ transform: `scale(${cardScale})`, transformOrigin: "top center", transition: 'transform 0.15s', display: 'flex', flexDirection: 'column', gap: '0.75rem' }}
           >
-            {/* 1. RoBERTa Cumulative Average Sentiment Score */}
             <div className="scalable-card" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
               <h2 className="card-title-sm" style={{ marginBottom: '1.25rem', textAlign: 'center', width: '100%' }}>
                 Cumulative RoBERTa Sentiment Score
@@ -649,11 +577,10 @@ export default function LiveMonitor() {
               <p style={{ fontSize: '0.75rem', color: '#64748b', textAlign: 'center', fontWeight: 500, margin: 0, maxWidth: '220px' }}>
                 {messages.length > 0
                   ? `Average score over ${messages.length} sentences calculated from RoBERTa confidence`
-                  : "Waiting for chat or audio input to calculate score"}
+                  : "Waiting for chat input to calculate score"}
               </p>
             </div>
 
-            {/* 2. Keyword Alertness Card */}
             <div className="scalable-card">
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <h2 className="card-title-sm">Keyword Alertness</h2>
@@ -720,7 +647,6 @@ export default function LiveMonitor() {
               </div>
             </div>
 
-            {/* 3. Pipeline Execution Time Card */}
             <div className="scalable-card" style={{ backgroundColor: '#ffffff' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
@@ -771,7 +697,6 @@ export default function LiveMonitor() {
         </div>
       </main>
 
-      {/* TOAST NOTIFICATION */}
       {toastMessage && (
         <div className="live-toast">
           <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'rgba(16,185,129,0.2)', color: '#10b981', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -785,4 +710,4 @@ export default function LiveMonitor() {
       )}
     </div>
   );
-}
+}

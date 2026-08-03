@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, ChangeEvent } from "react";
+import { useState, useRef, useCallback, ChangeEvent } from "react";
 import "./model.css";
 
 interface DetectedIssue {
@@ -24,7 +24,15 @@ export default function EmotionMatrixPage() {
   const webSocketRef = useRef<WebSocket | null>(null);
   const startTimeRef = useRef<number | null>(null);
 
-  const handleFileChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const resetState = useCallback(() => {
+    setBase64String("");
+    setTranscript("");
+    setProcessingTime(null);
+    setIssues([]);
+    setError(null);
+  }, []);
+
+  const handleFileChange = useCallback((e: ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (!selectedFile) return;
     resetState();
@@ -36,9 +44,11 @@ export default function EmotionMatrixPage() {
       setBase64String(b64);
     };
     reader.readAsDataURL(selectedFile);
-  };
+  }, [resetState]);
 
-  const startRecording = async () => {
+  const roundToTwo = useCallback((num: number) => Math.round(num * 100) / 100, []);
+
+  const startRecording = useCallback(async () => {
     try {
       resetState();
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -60,7 +70,6 @@ export default function EmotionMatrixPage() {
           }
         };
 
-        // Send audio slices every 250ms for ultra-fast realtime streaming
         mediaRecorder.start(250);
       };
 
@@ -100,9 +109,9 @@ export default function EmotionMatrixPage() {
     } catch (err) {
       setError("Microphone access denied or unavailable.");
     }
-  };
+  }, [resetState, roundToTwo]);
 
-  const stopRecording = () => {
+  const stopRecording = useCallback(() => {
     if (mediaRecorderRef.current && isRecording) {
       mediaRecorderRef.current.stop();
       mediaRecorderRef.current.stream.getTracks().forEach((track) => track.stop());
@@ -111,9 +120,9 @@ export default function EmotionMatrixPage() {
       webSocketRef.current.close();
     }
     setIsRecording(false);
-  };
+  }, [isRecording]);
 
-  const handleSend = async () => {
+  const handleSend = useCallback(async () => {
     if (!base64String) {
       setError("Please select a file or record audio first.");
       return;
@@ -143,17 +152,7 @@ export default function EmotionMatrixPage() {
     } finally {
       setIsLoading(false);
     }
-  };
-
-  const resetState = () => {
-    setBase64String("");
-    setTranscript("");
-    setProcessingTime(null);
-    setIssues([]);
-    setError(null);
-  };
-
-  const roundToTwo = (num: number) => Math.round(num * 100) / 100;
+  }, [base64String]);
 
   return (
     <main className="rest-page">
@@ -217,13 +216,7 @@ export default function EmotionMatrixPage() {
                       <span className={`rest-badge rest-badge-${issue.sentiment_category.toLowerCase()}`}>
                         {issue.sentiment_category}
                       </span>
-                      {/* <span className="rest-emotion-pill">
-                        {issue.emotion}
-                      </span> */}
                     </div>
-                    {/* <p className="rest-confidence">
-                      Confidence: {(issue.confidence * 100).toFixed(1)}%
-                    </p> */}
                   </div>
                 </div>
               ))}
