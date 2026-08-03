@@ -8,9 +8,6 @@ import {
   User,
   Sparkle,
   ArrowsClockwise,
-  UserFocus,
-  WarningOctagon,
-  Copy,
   ArrowsOutLineHorizontal,
   WarningCircle,
   Spinner,
@@ -105,8 +102,6 @@ export default function LiveMonitor() {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [highlightedIndex, setHighlightedIndex] = useState<number | null>(null);
 
-  const [showSummary, setShowSummary] = useState<boolean>(false);
-  const [isRefreshingSummary, setIsRefreshingSummary] = useState<boolean>(false);
   const [toastMessage, setToastMessage] = useState<{ title: string; body: string } | null>(null);
 
   useEffect(() => {
@@ -205,14 +200,6 @@ export default function LiveMonitor() {
       setIsLoading(false);
     }
   }, [inputText, isLoading, activeRole, addGatewayIssuesToMessages]);
-
-  const triggerToast = useCallback((title: string, body: string) => {
-    setToastMessage({ title, body });
-    setTimeout(() => setToastMessage(null), 4000);
-  }, []);
-
-  const recentNegativeMessages = useMemo(() => recentMessages.filter((m) => m.sentiment_category === "negative"), [recentMessages]);
-  const recentPositiveMessages = useMemo(() => recentMessages.filter((m) => m.sentiment_category === "positive"), [recentMessages]);
 
   const realOverallScore = useMemo(() => {
     if (recentMessages.length === 0) return 0;
@@ -401,79 +388,6 @@ export default function LiveMonitor() {
                 </div>
               );
             })}
-
-            {messages.length > 0 && (
-              <div style={{ marginTop: '0.75rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0', display: 'flex', flexDirection: 'column', width: '100%' }}>
-                <button onClick={() => setShowSummary(!showSummary)} className="summary-trigger-btn">
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem' }}>
-                    <div style={{ width: '24px', height: '24px', borderRadius: '6px', backgroundColor: 'rgba(255,87,34,0.2)', border: '1px solid rgba(255,87,34,0.4)', color: '#ff5722', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                      <Sparkle size={14} weight="bold" />
-                    </div>
-                    <span style={{ fontWeight: 700 }}>Get Live Call Summary</span>
-                  </div>
-                </button>
-
-                {showSummary && (
-                  <div className="summary-card-body">
-                    {isRefreshingSummary ? (
-                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '1.5rem', gap: '0.5rem', color: '#64748b' }}>
-                        <Spinner size={20} className="animate-spin" style={{ color: '#ff5722' }} />
-                        <span style={{ fontSize: '0.75rem', fontWeight: 600 }}>Analyzing conversation transcript...</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid #f1f5f9', paddingBottom: '0.5rem' }}>
-                          <span style={{ padding: '0.15rem 0.5rem', backgroundColor: '#fff7ed', color: '#c2410c', fontWeight: 700, fontSize: '0.62rem', textTransform: 'uppercase', borderRadius: '4px', border: '1px solid #ffedd5' }}>
-                            AI Live Summary
-                          </span>
-                          <button
-                            onClick={() => {
-                              setIsRefreshingSummary(true);
-                              setTimeout(() => setIsRefreshingSummary(false), 750);
-                            }}
-                            style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '0.75rem', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                          >
-                            <ArrowsClockwise size={12} /> Refresh
-                          </button>
-                        </div>
-
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                          <div className="summary-item-box">
-                            <div className="summary-item-title">
-                              <UserFocus size={16} style={{ color: '#ff5722' }} /> Conversation Overview
-                            </div>
-                            <p style={{ margin: 0, color: '#475569', lineHeight: 1.5 }}>
-                              Analyzed {messages.length} total messages ({messages.filter(m => m.speaker === 'agent').length} Agent, {messages.filter(m => m.speaker === 'caller').length} Caller).
-                            </p>
-                          </div>
-
-                          <div className="summary-item-box">
-                            <div className="summary-item-title">
-                              <WarningOctagon size={16} style={{ color: realOverallScore < 0 ? '#ef4444' : '#10b981' }} /> RoBERTa Sentiment Score (Last {recentMessages.length})
-                            </div>
-                            <p style={{ margin: 0, color: '#475569', lineHeight: 1.5 }}>
-                              Rolling Average Score: <strong style={{ color: realOverallScore < 0 ? '#dc2626' : '#059669' }}>({realOverallScore}%)</strong>. Negative segments: {recentNegativeMessages.length}, Positive: {recentPositiveMessages.length}.
-                            </p>
-                          </div>
-                        </div>
-
-                        <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: '0.25rem' }}>
-                          <button
-                            onClick={() => {
-                              navigator.clipboard.writeText(`AI Live Call Summary: ${transcript.slice(0, 150)}...`);
-                              triggerToast("Summary Copied", "Call summary copied to clipboard!");
-                            }}
-                            style={{ fontSize: '0.7rem', fontWeight: 600, color: '#475569', backgroundColor: '#f8fafc', border: '1px solid #e2e8f0', padding: '0.25rem 0.6rem', borderRadius: '6px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.25rem' }}
-                          >
-                            <Copy size={12} /> Copy Summary
-                          </button>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
 
           <div style={{ padding: '0.75rem 1rem', borderTop: '1px solid var(--live-border)', backgroundColor: '#ffffff', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
